@@ -801,11 +801,10 @@ Si deseas agendar nuevamente, estoy aquí para ayudarte. 😊"""
         citas = self.get_patient_appointments(telefono)
         
         if not citas:
-            return "No tienes citas agendadas. 📅\n\n¿Deseas agendar una?\n\n" + self.show_menu(telefono)
+            return "No tienes citas agendadas. 📅"
         
         respuesta = "📋 Tus citas agendadas:\n\n"
         for i, cita in enumerate(citas, 1):
             respuesta += f"{i}. {self.format_appointment(cita)}\n\n"
         
-        respuesta += self.show_menu(telefono)
-        return respuesta
+        return respuesta.strip()
