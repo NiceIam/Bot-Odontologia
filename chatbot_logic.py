@@ -362,20 +362,27 @@ Por favor, responde con el número de la opción que deseas."""
         # Guardar nombre
         self.get_or_create_patient(telefono, mensaje.title())
         
-        # Preparar servicios_map para el siguiente estado
+        # Preparar servicios_map
         categorias = self.get_servicios_por_categoria()
         servicios_map = {}
         contador = 1
         
+        # Construir mensaje compacto con solo los primeros 10 servicios
+        respuesta = "Servicios (1-10):\n\n"
+        
         for categoria, servicios in categorias.items():
             for servicio in servicios:
+                if contador <= 10:
+                    respuesta += f"{contador}. {servicio.nombre}\n"
                 servicios_map[contador] = servicio.id
                 contador += 1
+        
+        respuesta += f"\n(Hay {contador-1} servicios en total)\nEscribe el número"
         
         # Actualizar estado
         self.update_conversation(telefono, self.ESTADO_AGENDAR_SERVICIO, {"servicios_map": servicios_map})
         
-        return "Escribe el número del servicio que necesitas:"
+        return respuesta
     
     def handle_agendar_servicio(self, telefono: str, mensaje: str) -> str:
         """Maneja la selección de servicio en el flujo de agendar"""
