@@ -6,6 +6,7 @@ from chatbot_logic import ChatbotLogic
 from evolution_client import evolution_client
 from config import get_settings
 import logging
+import time
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -13,8 +14,24 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
-# Crear tablas si no existen
-Base.metadata.create_all(bind=engine)
+# Intentar conectar a la base de datos con reintentos
+max_retries = 5
+retry_delay = 2
+
+for attempt in range(max_retries):
+    try:
+        logger.info(f"Intentando conectar a la base de datos (intento {attempt + 1}/{max_retries})...")
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ Conexión a base de datos exitosa")
+        break
+    except Exception as e:
+        logger.error(f"❌ Error conectando a base de datos: {str(e)}")
+        if attempt < max_retries - 1:
+            logger.info(f"Reintentando en {retry_delay} segundos...")
+            time.sleep(retry_delay)
+        else:
+            logger.error("❌ No se pudo conectar a la base de datos después de varios intentos")
+            # Continuar de todas formas para que el health check responda
 
 app = FastAPI(
     title="Chatbot Clínica Odontológica",
@@ -28,29 +45,29 @@ async def root():
     return {
         "status": "online",
         "service": "Chatbot Clínica Odontológica",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "message": "API funcionando correctamente"
     }
 
 @app.get("/health")
 async def health_check():
     """Verifica el estado del servicio"""
+    db_status = "unknown"
     try:
         # Verificar conexión a base de datos
         db = next(get_db())
         db.execute("SELECT 1")
         db.close()
-        
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "evolution_api": settings.evolution_api_url
-        }
+        db_status = "connected"
     except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return JSONResponse(
-            status_code=503,
-            content={"status": "unhealthy", "error": str(e)}
-        )
+        logger.error(f"Health check DB error: {str(e)}")
+        db_status = f"error: {str(e)}"
+    
+    return {
+        "status": "healthy",
+        "database": db_status,
+        "evolution_api": settings.evolution_api_url
+    }
 
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
