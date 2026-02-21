@@ -228,6 +228,11 @@ class ChatbotLogic:
         conv = self.get_or_create_conversation(telefono)
         mensaje = mensaje.strip().lower()
         
+        # Si el usuario saluda, siempre mostrar el menú
+        saludos = ["hola", "hi", "hello", "buenos dias", "buenas tardes", "buenas noches", "hey", "ola"]
+        if any(saludo in mensaje for saludo in saludos):
+            return self.show_menu(telefono)
+        
         # Estado inicial o menú
         if conv.estado in [self.ESTADO_INICIAL, self.ESTADO_MENU]:
             return self.handle_menu(telefono, mensaje)
