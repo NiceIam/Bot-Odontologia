@@ -335,20 +335,20 @@ Por favor, responde con el número de la opción que deseas."""
         """Muestra el catálogo de servicios"""
         categorias = self.get_servicios_por_categoria()
         
-        respuesta = "Selecciona el servicio:\n\n"
+        # Crear lista simplificada
+        respuesta = "Servicios disponibles:\n\n"
         
         contador = 1
         servicios_map = {}
         
+        # Mostrar solo los primeros servicios de cada categoría de forma compacta
         for categoria, servicios in categorias.items():
-            respuesta += f"{categoria}:\n"
             for servicio in servicios:
                 respuesta += f"{contador}. {servicio.nombre}\n"
                 servicios_map[contador] = servicio.id
                 contador += 1
-            respuesta += "\n"
         
-        respuesta += "Escribe el número"
+        respuesta += "\nEscribe el número"
         
         self.update_conversation(telefono, self.ESTADO_AGENDAR_SERVICIO, {"servicios_map": servicios_map})
         return respuesta
@@ -362,7 +362,27 @@ Por favor, responde con el número de la opción que deseas."""
         # Guardar nombre
         self.get_or_create_patient(telefono, mensaje.title())
         
-        return self.show_servicios(telefono)
+        # Enviar lista de servicios primero
+        categorias = self.get_servicios_por_categoria()
+        
+        mensaje_servicios = "📋 Servicios disponibles:\n\n"
+        contador = 1
+        servicios_map = {}
+        
+        for categoria, servicios in categorias.items():
+            for servicio in servicios:
+                mensaje_servicios += f"{contador}. {servicio.nombre}\n"
+                servicios_map[contador] = servicio.id
+                contador += 1
+        
+        # Enviar el mensaje de servicios
+        import asyncio
+        from evolution_client import evolution_client
+        asyncio.create_task(evolution_client.send_message(telefono, mensaje_servicios))
+        
+        # Actualizar estado y retornar mensaje de instrucción
+        self.update_conversation(telefono, self.ESTADO_AGENDAR_SERVICIO, {"servicios_map": servicios_map})
+        return "Escribe el número del servicio que necesitas:"
     
     def handle_agendar_servicio(self, telefono: str, mensaje: str) -> str:
         """Maneja la selección de servicio en el flujo de agendar"""
