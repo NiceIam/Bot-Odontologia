@@ -59,8 +59,15 @@ class ChatbotLogic:
         conv = self.get_or_create_conversation(telefono)
         conv.estado = estado
         if contexto is not None:
-            conv.contexto = contexto
-        conv.ultima_interaccion = datetime.utcnow()
+            # Forzar actualización del JSONB
+            from sqlalchemy import update
+            self.db.execute(
+                update(Conversacion).
+                where(Conversacion.telefono == telefono).
+                values(estado=estado, contexto=contexto, ultima_interaccion=datetime.utcnow())
+            )
+        else:
+            conv.ultima_interaccion = datetime.utcnow()
         self.db.commit()
         self.db.refresh(conv)
     
