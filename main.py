@@ -39,6 +39,19 @@ app = FastAPI(
     version="1.0.0"
 )
 
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Aplicación iniciada correctamente")
+    logger.info(f"📊 Configuración:")
+    logger.info(f"   - Database: {settings.database_url[:30]}...")
+    logger.info(f"   - Evolution API: {settings.evolution_api_url}")
+    logger.info(f"   - Instance: {settings.evolution_instance_name}")
+    logger.info(f"   - Port: {settings.port}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.warning("⚠️ Aplicación cerrándose...")
+
 @app.get("/")
 async def root():
     """Endpoint de health check"""
