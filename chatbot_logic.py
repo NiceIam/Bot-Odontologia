@@ -341,14 +341,14 @@ Por favor, responde con el número de la opción que deseas."""
         servicios_map = {}
         
         for categoria, servicios in categorias.items():
-            respuesta += f"📋 {categoria}:\n"
+            respuesta += f"📋 *{categoria}*:\n"
             for servicio in servicios:
                 respuesta += f"{contador}. {servicio.nombre} ({servicio.duracion_minutos} min)\n"
                 servicios_map[contador] = servicio.id
                 contador += 1
             respuesta += "\n"
         
-        respuesta += "Responde con el número del servicio que deseas."
+        respuesta += "💬 Responde con el número del servicio que deseas."
         
         self.update_conversation(telefono, self.ESTADO_AGENDAR_SERVICIO, {"servicios_map": servicios_map})
         return respuesta
