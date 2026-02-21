@@ -422,6 +422,12 @@ Por favor, responde con el número de la opción que deseas."""
         
         conv = self.get_or_create_conversation(telefono)
         contexto = conv.contexto or {}
+        
+        # Asegurar que tenemos servicio_id y duracion
+        if "servicio_id" not in contexto:
+            self.update_conversation(telefono, self.ESTADO_MENU, {})
+            return "❌ Hubo un error. Por favor, comienza de nuevo.\n\n" + self.show_menu(telefono)
+        
         duracion = contexto.get("duracion_minutos", 30)
         
         # Verificar horarios disponibles
@@ -447,7 +453,13 @@ Por favor, responde con el número de la opción que deseas."""
             return "❌ Hora inválida. Por favor verifica:\n\n• Usa formato HH:MM\n• Horario: 8:00 a 17:00\n• Almuerzo: 12:00 a 13:00 (no disponible)\n• Solo en punto o media hora (ej: 10:00, 10:30)\n\nIntenta nuevamente."
         
         conv = self.get_or_create_conversation(telefono)
-        contexto = conv.contexto
+        contexto = conv.contexto or {}
+        
+        # Validar que tenemos la fecha en el contexto
+        if "fecha" not in contexto:
+            self.update_conversation(telefono, self.ESTADO_MENU, {})
+            return "❌ Hubo un error. Por favor, comienza de nuevo.\n\n" + self.show_menu(telefono)
+        
         fecha = parser.parse(contexto["fecha"])
         fecha_hora = datetime.combine(fecha.date(), hora)
         duracion = contexto.get("duracion_minutos", 30)
