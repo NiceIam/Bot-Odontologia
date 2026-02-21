@@ -58,10 +58,11 @@ class ChatbotLogic:
         """Actualiza el estado de la conversación"""
         conv = self.get_or_create_conversation(telefono)
         conv.estado = estado
-        if contexto:
+        if contexto is not None:
             conv.contexto = contexto
         conv.ultima_interaccion = datetime.utcnow()
         self.db.commit()
+        self.db.refresh(conv)
     
     def get_or_create_patient(self, telefono: str, nombre: str = None) -> Paciente:
         """Obtiene o crea un paciente"""
@@ -404,8 +405,11 @@ Por favor, responde con el número de la opción que deseas."""
             if not servicio:
                 return "Servicio no encontrado. Por favor, intenta nuevamente."
             
+            # Mantener servicios_map en el contexto
             contexto["servicio_id"] = servicio_id
             contexto["duracion_minutos"] = servicio.duracion_minutos
+            
+            print(f"DEBUG: Guardando contexto: {contexto}")
             self.update_conversation(telefono, self.ESTADO_AGENDAR_FECHA, contexto)
             
             return f"Excelente! Has seleccionado: {servicio.nombre} ({servicio.duracion_minutos} min)\n\n¿Qué día te gustaría venir? Por favor indica la fecha en formato DD/MM/AAAA (ejemplo: 25/02/2026).\n\nRecuerda que atendemos de Lunes a Viernes."
@@ -423,8 +427,11 @@ Por favor, responde con el número de la opción que deseas."""
         conv = self.get_or_create_conversation(telefono)
         contexto = conv.contexto or {}
         
+        print(f"DEBUG: Contexto recibido en handle_agendar_fecha: {contexto}")
+        
         # Asegurar que tenemos servicio_id y duracion
         if "servicio_id" not in contexto:
+            print(f"ERROR: No hay servicio_id en contexto. Contexto completo: {contexto}")
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             return "❌ Hubo un error. Por favor, comienza de nuevo.\n\n" + self.show_menu(telefono)
         
@@ -436,6 +443,7 @@ Por favor, responde con el número de la opción que deseas."""
             return f"😔 Lo siento, no hay horarios disponibles para el {fecha.strftime('%d/%m/%Y')}.\n\nPor favor, elige otra fecha."
         
         contexto["fecha"] = fecha.isoformat()
+        print(f"DEBUG: Guardando contexto con fecha: {contexto}")
         self.update_conversation(telefono, self.ESTADO_AGENDAR_HORA, contexto)
         
         respuesta = f"Perfecto! Para el {fecha.strftime('%d/%m/%Y')} tenemos disponibles:\n\n"
