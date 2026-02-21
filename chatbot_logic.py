@@ -617,7 +617,8 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
         contexto = conv.contexto
         contexto["servicios_map"] = servicios_map
         contexto["cambiar_servicio"] = True
-        self.update_conversation(telefono, self.ESTADO_REAGENDAR_SERVICIO, contexto)
+        # Cambiar el estado a REAGENDAR_FECHA para que el siguiente mensaje lo procese correctamente
+        self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
         
         return respuesta
     
