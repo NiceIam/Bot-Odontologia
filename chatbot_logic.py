@@ -362,26 +362,19 @@ Por favor, responde con el número de la opción que deseas."""
         # Guardar nombre
         self.get_or_create_patient(telefono, mensaje.title())
         
-        # Enviar lista de servicios primero
+        # Preparar servicios_map para el siguiente estado
         categorias = self.get_servicios_por_categoria()
-        
-        mensaje_servicios = "📋 Servicios disponibles:\n\n"
-        contador = 1
         servicios_map = {}
+        contador = 1
         
         for categoria, servicios in categorias.items():
             for servicio in servicios:
-                mensaje_servicios += f"{contador}. {servicio.nombre}\n"
                 servicios_map[contador] = servicio.id
                 contador += 1
         
-        # Enviar el mensaje de servicios
-        import asyncio
-        from evolution_client import evolution_client
-        asyncio.create_task(evolution_client.send_message(telefono, mensaje_servicios))
-        
-        # Actualizar estado y retornar mensaje de instrucción
+        # Actualizar estado
         self.update_conversation(telefono, self.ESTADO_AGENDAR_SERVICIO, {"servicios_map": servicios_map})
+        
         return "Escribe el número del servicio que necesitas:"
     
     def handle_agendar_servicio(self, telefono: str, mensaje: str) -> str:

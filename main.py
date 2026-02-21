@@ -86,24 +86,6 @@ async def health_check():
 async def webhook(request: Request, db: Session = Depends(get_db)):
     """
     Endpoint webhook para recibir mensajes de Evolution API
-    
-    Evolution API envía los mensajes en este formato:
-    {
-        "event": "messages.upsert",
-        "instance": "instance_name",
-        "data": {
-            "key": {
-                "remoteJid": "5511999999999@s.whatsapp.net",
-                "fromMe": false,
-                "id": "message_id"
-            },
-            "message": {
-                "conversation": "texto del mensaje"
-            },
-            "messageTimestamp": "1234567890",
-            "pushName": "Nombre del contacto"
-        }
-    }
     """
     try:
         body = await request.json()
@@ -143,6 +125,28 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
         
         # Procesar mensaje con la lógica del chatbot
         chatbot = ChatbotLogic(db)
+        
+        # Verificar si necesita enviar servicios primero
+        conv = chatbot.get_or_create_conversation(telefono)
+        mensaje_lower = mensaje.strip().lower()
+        
+        # Si está en estado AGENDAR_NOMBRE y da un nombre válido, enviar servicios primero
+        if conv.estado == "agendar_nombre" and len(mensaje.strip()) >= 3:
+            # Enviar lista de servicios
+            categorias = chatbot.get_servicios_por_categoria()
+            mensaje_servicios = "📋 Servicios disponibles:\n\n"
+            contador = 1
+            
+            for categoria, servicios in categorias.items():
+                for servicio in servicios:
+                    mensaje_servicios += f"{contador}. {servicio.nombre}\n"
+                    contador += 1
+            
+            await evolution_client.send_message(telefono, mensaje_servicios)
+            import asyncio
+            await asyncio.sleep(0.5)  # Pequeña pausa entre mensajes
+        
+        # Procesar el mensaje normalmente
         respuesta = chatbot.process_message(telefono, mensaje)
         
         # Enviar respuesta a través de Evolution API
