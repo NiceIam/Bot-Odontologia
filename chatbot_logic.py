@@ -548,13 +548,11 @@ Por favor, responde con el número de la opción que deseas."""
 💼 {servicio.nombre} ({servicio.duracion_minutos} min)
 👨‍⚕️ {doctor.nombre}
 
-Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras.
-
-{self.show_menu(telefono)}"""
+Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
         
         else:
             self.update_conversation(telefono, self.ESTADO_MENU, {})
-            return "Cita cancelada. No hay problema! 😊\n\n" + self.show_menu(telefono)
+            return "Cita cancelada. No hay problema! 😊"
     
     # === FLUJO REAGENDAR ===
     def handle_reagendar_seleccionar(self, telefono: str, mensaje: str) -> str:
@@ -751,13 +749,11 @@ NUEVA CITA:
 💼 {servicio.nombre} ({servicio.duracion_minutos} min)
 👨‍⚕️ {doctor.nombre}
 
-Te esperamos! 😊
-
-{self.show_menu(telefono)}"""
+Te esperamos! 😊"""
         
         else:
             self.update_conversation(telefono, self.ESTADO_MENU, {})
-            return "Reagendamiento cancelado.\n\n" + self.show_menu(telefono)
+            return "Reagendamiento cancelado."
     
     # === FLUJO CANCELAR ===
     def handle_cancelar_seleccionar(self, telefono: str, mensaje: str) -> str:
@@ -792,13 +788,11 @@ Te esperamos! 😊
             
             return f"""✅ Cita cancelada exitosamente.
 
-Si deseas agendar nuevamente, estoy aquí para ayudarte. 😊
-
-{self.show_menu(telefono)}"""
+Si deseas agendar nuevamente, estoy aquí para ayudarte. 😊"""
         
         else:
             self.update_conversation(telefono, self.ESTADO_MENU, {})
-            return "Cancelación abortada. Tu cita sigue activa.\n\n" + self.show_menu(telefono)
+            return "Cancelación abortada. Tu cita sigue activa."
     
     # === FLUJO CONSULTAR ===
     def handle_consultar(self, telefono: str, mensaje: str) -> str:
