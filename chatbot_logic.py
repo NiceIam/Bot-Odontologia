@@ -466,13 +466,36 @@ Por favor, responde con el número de la opción que deseas."""
         if not slots:
             return f"😔 Lo siento, no hay horarios disponibles para el {fecha.strftime('%d/%m/%Y')}.\n\nPor favor, elige otra fecha."
         
-        # Crear mapa de horarios
+        # Separar horarios en mañana y tarde
+        horarios_manana = []
+        horarios_tarde = []
+        
+        for slot in slots:
+            hora = int(slot.split(":")[0])
+            if hora < 12:
+                horarios_manana.append(slot)
+            else:
+                horarios_tarde.append(slot)
+        
+        # Crear mapa de horarios y respuesta
         horarios_map = {}
+        contador = 1
         respuesta = f"Perfecto! Para el {fecha.strftime('%d/%m/%Y')} tenemos disponibles:\n\n"
         
-        for i, slot in enumerate(slots, 1):
-            respuesta += f"{i}. {slot}\n"
-            horarios_map[i] = slot
+        if horarios_manana:
+            respuesta += "🌅 Mañana:\n"
+            for slot in horarios_manana:
+                respuesta += f"{contador}. {slot}\n"
+                horarios_map[contador] = slot
+                contador += 1
+            respuesta += "\n"
+        
+        if horarios_tarde:
+            respuesta += "🌆 Tarde:\n"
+            for slot in horarios_tarde:
+                respuesta += f"{contador}. {slot}\n"
+                horarios_map[contador] = slot
+                contador += 1
         
         respuesta += "\nResponde con el número del horario que prefieres."
         
@@ -697,13 +720,36 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
         if not slots:
             return f"😔 No hay horarios disponibles para el {fecha.strftime('%d/%m/%Y')}.\n\nPor favor, elige otra fecha."
         
-        # Crear mapa de horarios
+        # Separar horarios en mañana y tarde
+        horarios_manana = []
+        horarios_tarde = []
+        
+        for slot in slots:
+            hora = int(slot.split(":")[0])
+            if hora < 12:
+                horarios_manana.append(slot)
+            else:
+                horarios_tarde.append(slot)
+        
+        # Crear mapa de horarios y respuesta
         horarios_map = {}
+        contador = 1
         respuesta = f"Para el {fecha.strftime('%d/%m/%Y')} tenemos:\n\n"
         
-        for i, slot in enumerate(slots, 1):
-            respuesta += f"{i}. {slot}\n"
-            horarios_map[i] = slot
+        if horarios_manana:
+            respuesta += "🌅 Mañana:\n"
+            for slot in horarios_manana:
+                respuesta += f"{contador}. {slot}\n"
+                horarios_map[contador] = slot
+                contador += 1
+            respuesta += "\n"
+        
+        if horarios_tarde:
+            respuesta += "🌆 Tarde:\n"
+            for slot in horarios_tarde:
+                respuesta += f"{contador}. {slot}\n"
+                horarios_map[contador] = slot
+                contador += 1
         
         respuesta += "\nResponde con el número del horario que prefieres."
         
@@ -748,12 +794,37 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             if not slots:
                 return "😔 Ese horario ya no está disponible y no quedan más espacios.\n\nPor favor, elige otra fecha."
             
+            # Separar horarios en mañana y tarde
+            horarios_manana = []
+            horarios_tarde = []
+            
+            for slot in slots:
+                hora_num = int(slot.split(":")[0])
+                if hora_num < 12:
+                    horarios_manana.append(slot)
+                else:
+                    horarios_tarde.append(slot)
+            
             # Crear nuevo mapa de horarios
             horarios_map = {}
+            contador = 1
             respuesta = "😔 Ese horario ya está ocupado. Disponibles:\n\n"
-            for i, slot in enumerate(slots, 1):
-                respuesta += f"{i}. {slot}\n"
-                horarios_map[i] = slot
+            
+            if horarios_manana:
+                respuesta += "🌅 Mañana:\n"
+                for slot in horarios_manana:
+                    respuesta += f"{contador}. {slot}\n"
+                    horarios_map[contador] = slot
+                    contador += 1
+                respuesta += "\n"
+            
+            if horarios_tarde:
+                respuesta += "🌆 Tarde:\n"
+                for slot in horarios_tarde:
+                    respuesta += f"{contador}. {slot}\n"
+                    horarios_map[contador] = slot
+                    contador += 1
+            
             respuesta += "\nResponde con el número del horario que prefieres."
             contexto["horarios_map"] = horarios_map
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_HORA, contexto)
