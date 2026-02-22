@@ -191,7 +191,7 @@ class ChatbotLogic:
         
         return fechas
     
-    def get_available_slots(self, fecha: datetime, duracion_minutos: int, limit: int = 5) -> List[str]:
+    def get_available_slots(self, fecha: datetime, duracion_minutos: int, limit: int = 20) -> List[str]:
         """Obtiene horarios disponibles para una fecha y duración específica"""
         slots = []
         hora_inicio = datetime.combine(fecha.date(), time(hour=self.HORA_INICIO))
