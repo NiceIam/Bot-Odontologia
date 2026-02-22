@@ -74,6 +74,8 @@ class Conversacion(Base):
     telefono = Column(String(20), unique=True, nullable=False, index=True)
     estado = Column(String(50), nullable=False)
     contexto = Column(JSON, default={})
+    modo_humano = Column(String(10), default="false")
+    fecha_modo_humano = Column(DateTime)
     ultima_interaccion = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 

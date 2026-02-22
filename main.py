@@ -127,17 +127,73 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
         chatbot = ChatbotLogic(db)
         respuesta = chatbot.process_message(telefono, mensaje)
         
-        # Enviar respuesta a través de Evolution API
-        await evolution_client.send_message(telefono, respuesta)
+        # Manejar señales especiales
+        if respuesta == "handoff_to_human":
+            # Activar modo humano
+            chatbot.activate_human_mode(telefono)
+            
+            # Enviar mensaje al paciente
+            await evolution_client.send_message(
+                telefono,
+                "Un momento por favor, te estamos conectando con un profesional. En breve alguien continuará la conversación contigo."
+            )
+            
+            # Enviar webhook de notificación
+            paciente = chatbot.get_or_create_patient(telefono)
+            await chatbot.send_human_handoff_webhook(
+                telefono,
+                mensaje,
+                paciente.nombre if paciente else None
+            )
+            
+            logger.info(f"Handoff a humano activado para {telefono}")
+            
+            return {
+                "status": "success",
+                "phone": telefono,
+                "action": "handoff_to_human",
+                "message_received": mensaje
+            }
         
-        logger.info(f"Respuesta enviada a {telefono}")
+        elif respuesta == "human_mode_active":
+            # No responder, el humano está atendiendo
+            logger.info(f"Modo humano activo para {telefono}, mensaje registrado pero no respondido")
+            
+            return {
+                "status": "success",
+                "phone": telefono,
+                "action": "human_mode_active",
+                "message_received": mensaje,
+                "response_sent": False
+            }
         
-        return {
-            "status": "success",
-            "phone": telefono,
-            "message_received": mensaje,
-            "response_sent": True
-        }
+        elif respuesta == "bot_reactivated":
+            # Bot reactivado
+            await evolution_client.send_message(
+                telefono,
+                "Bot reactivado. Escribe 'hola' para ver el menú de opciones."
+            )
+            
+            logger.info(f"Bot reactivado para {telefono}")
+            
+            return {
+                "status": "success",
+                "phone": telefono,
+                "action": "bot_reactivated",
+                "message_received": mensaje
+            }
+        
+        else:
+            # Respuesta normal del bot
+            await evolution_client.send_message(telefono, respuesta)
+            logger.info(f"Respuesta enviada a {telefono}")
+            
+            return {
+                "status": "success",
+                "phone": telefono,
+                "message_received": mensaje,
+                "response_sent": True
+            }
     
     except Exception as e:
         logger.error(f"Error procesando webhook: {str(e)}", exc_info=True)

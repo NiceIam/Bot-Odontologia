@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from database import Paciente, Cita, Conversacion, Doctor, Servicio
 from dateutil import parser
 import re
+import httpx
 
 class ChatbotLogic:
     # Estados de conversación
@@ -39,6 +40,136 @@ class ChatbotLogic:
     
     def __init__(self, db: Session):
         self.db = db
+        
+        # Palabras clave para detectar intención de hablar con humano
+        self.human_intent_keywords = [
+            # Solicitudes directas
+            "hablar con alguien", "hablar con una persona", "hablar con un humano",
+            "persona real", "asesor", "asesora", "operador", "operadora",
+            "recepcion", "recepción", "encargado", "encargada",
+            
+            # Dudas y consultas
+            "tengo una duda", "tengo dudas", "una pregunta", "pregunta",
+            "necesito ayuda", "ayuda humana", "ayuda real",
+            
+            # Soporte
+            "soporte", "atencion", "atención", "asistencia",
+            "comunicarme con", "contactar con", "hablar con",
+            
+            # Rechazo al bot
+            "no quiero bot", "no bot", "quiero persona", "prefiero persona",
+            "no entiendes", "no me entiendes", "no me ayudas",
+            
+            # Variaciones informales
+            "alguien real", "alguien de verdad", "persona de verdad",
+            "me puedes pasar", "pasame con", "pásame con",
+            "quiero que me atienda", "que me atienda alguien",
+            
+            # Errores ortográficos comunes
+            "umano", "persna", "asesor", "resepcion", "duda",
+        ]
+        
+        # Frases de reactivación del bot (enviadas por el encargado)
+        self.bot_reactivation_phrases = [
+            "te dejo con el bot",
+            "el bot continuará",
+            "seguimos con el asistente",
+            "continua con el bot",
+            "continúa con el bot",
+            "vuelve al bot",
+            "bot activo",
+            "activar bot",
+        ]
+    
+    def detect_human_intent(self, mensaje: str) -> bool:
+        """Detecta si el usuario quiere hablar con una persona real"""
+        mensaje_lower = mensaje.lower().strip()
+        
+        # Verificar palabras clave
+        for keyword in self.human_intent_keywords:
+            if keyword in mensaje_lower:
+                return True
+        
+        # Patrones adicionales con regex
+        patterns = [
+            r"quiero\s+(hablar|comunicarme|contactar)",
+            r"necesito\s+(hablar|una\s+persona|alguien)",
+            r"puedo\s+hablar\s+con",
+            r"me\s+(puedes|puede)\s+pasar",
+            r"(asesor|persona|humano|alguien)\s+real",
+        ]
+        
+        for pattern in patterns:
+            if re.search(pattern, mensaje_lower):
+                return True
+        
+        return False
+    
+    def detect_bot_reactivation(self, mensaje: str) -> bool:
+        """Detecta si el encargado quiere reactivar el bot"""
+        mensaje_lower = mensaje.lower().strip()
+        
+        for phrase in self.bot_reactivation_phrases:
+            if phrase in mensaje_lower:
+                return True
+        
+        return False
+    
+    async def send_human_handoff_webhook(self, telefono: str, mensaje: str, nombre: str = None):
+        """Envía notificación al webhook cuando se solicita atención humana"""
+        webhook_url = "https://n8n-n8n.dtbfmw.easypanel.host/webhook-test/bfaba3be-b713-49ff-812e-5a9cb27cf128"
+        
+        # Obtener información del paciente
+        paciente = self.db.query(Paciente).filter(Paciente.telefono == telefono).first()
+        conv = self.get_or_create_conversation(telefono)
+        
+        payload = {
+            "telefono": telefono,
+            "nombre": nombre or (paciente.nombre if paciente else "Desconocido"),
+            "ultimo_mensaje": mensaje,
+            "fecha_hora": datetime.now().isoformat(),
+            "estado_conversacion": conv.estado,
+            "contexto": conv.contexto,
+            "tipo_evento": "solicitud_atencion_humana"
+        }
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(webhook_url, json=payload, timeout=10.0)
+                print(f"Webhook enviado: {response.status_code}")
+                return True
+        except Exception as e:
+            print(f"Error enviando webhook: {str(e)}")
+            return False
+    
+    def activate_human_mode(self, telefono: str):
+        """Activa el modo humano para un paciente"""
+        conv = self.get_or_create_conversation(telefono)
+        from sqlalchemy import update
+        self.db.execute(
+            update(Conversacion).
+            where(Conversacion.telefono == telefono).
+            values(modo_humano="true", fecha_modo_humano=datetime.utcnow())
+        )
+        self.db.commit()
+        self.db.refresh(conv)
+    
+    def deactivate_human_mode(self, telefono: str):
+        """Desactiva el modo humano y reactiva el bot"""
+        conv = self.get_or_create_conversation(telefono)
+        from sqlalchemy import update
+        self.db.execute(
+            update(Conversacion).
+            where(Conversacion.telefono == telefono).
+            values(modo_humano="false", estado=self.ESTADO_MENU)
+        )
+        self.db.commit()
+        self.db.refresh(conv)
+    
+    def is_human_mode_active(self, telefono: str) -> bool:
+        """Verifica si el modo humano está activo"""
+        conv = self.get_or_create_conversation(telefono)
+        return conv.modo_humano == "true"
     
     def get_or_create_conversation(self, telefono: str) -> Conversacion:
         """Obtiene o crea una conversación"""
@@ -251,7 +382,21 @@ class ChatbotLogic:
     def process_message(self, telefono: str, mensaje: str) -> str:
         """Procesa un mensaje y retorna la respuesta"""
         conv = self.get_or_create_conversation(telefono)
+        mensaje_original = mensaje
         mensaje = mensaje.strip().lower()
+        
+        # PRIORIDAD 1: Detectar si el encargado quiere reactivar el bot
+        if self.detect_bot_reactivation(mensaje):
+            self.deactivate_human_mode(telefono)
+            return "bot_reactivated"  # Señal especial para main.py
+        
+        # PRIORIDAD 2: Si está en modo humano, no procesar (dejar que el humano responda)
+        if self.is_human_mode_active(telefono):
+            return "human_mode_active"  # Señal especial para main.py
+        
+        # PRIORIDAD 3: Detectar intención de hablar con humano (en cualquier momento)
+        if self.detect_human_intent(mensaje):
+            return "handoff_to_human"  # Señal especial para main.py
         
         # Si el usuario saluda, siempre mostrar el menú
         saludos = ["hola", "hi", "hello", "buenos dias", "buenas tardes", "buenas noches", "hey", "ola"]
@@ -313,6 +458,7 @@ class ChatbotLogic:
 2️⃣ Reagendar una cita
 3️⃣ Cancelar una cita
 4️⃣ Consultar mis citas
+5️⃣ Hablar con un profesional
 
 Por favor, responde con el número de la opción que deseas."""
     
@@ -353,8 +499,12 @@ Por favor, responde con el número de la opción que deseas."""
         elif "4" in mensaje or "consultar" in mensaje:
             return self.handle_consultar(telefono, mensaje)
         
+        elif "5" in mensaje or "profesional" in mensaje or "hablar" in mensaje:
+            # Opción 5: Hablar con un profesional
+            return "handoff_to_human"  # Señal especial para main.py
+        
         else:
-            return "No entendí tu respuesta. Por favor, elige una opción del 1 al 4."
+            return "No entendí tu respuesta. Por favor, elige una opción del 1 al 5."
     
     def show_servicios(self, telefono: str) -> str:
         """Muestra el catálogo de servicios"""
