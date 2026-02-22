@@ -174,6 +174,23 @@ class ChatbotLogic:
         
         return False, None
     
+    def get_available_dates(self, limit: int = 7) -> List[datetime]:
+        """Obtiene las próximas fechas disponibles (solo días laborales)"""
+        fechas = []
+        fecha_actual = datetime.now().date()
+        dias_revisados = 0
+        max_dias = 30  # Revisar hasta 30 días en el futuro
+        
+        while len(fechas) < limit and dias_revisados < max_dias:
+            fecha_actual += timedelta(days=1)
+            dias_revisados += 1
+            
+            # Solo días laborales (Lunes a Viernes)
+            if fecha_actual.weekday() < 5:
+                fechas.append(datetime.combine(fecha_actual, time(hour=8)))
+        
+        return fechas
+    
     def get_available_slots(self, fecha: datetime, duracion_minutos: int, limit: int = 5) -> List[str]:
         """Obtiene horarios disponibles para una fecha y duración específica"""
         slots = []
@@ -449,24 +466,25 @@ Por favor, responde con el número de la opción que deseas."""
         if not slots:
             return f"😔 Lo siento, no hay horarios disponibles para el {fecha.strftime('%d/%m/%Y')}.\n\nPor favor, elige otra fecha."
         
+        # Crear mapa de horarios
+        horarios_map = {}
+        respuesta = f"Perfecto! Para el {fecha.strftime('%d/%m/%Y')} tenemos disponibles:\n\n"
+        
+        for i, slot in enumerate(slots, 1):
+            respuesta += f"{i}. {slot}\n"
+            horarios_map[i] = slot
+        
+        respuesta += "\nResponde con el número del horario que prefieres."
+        
         contexto["fecha"] = fecha.isoformat()
+        contexto["horarios_map"] = horarios_map
         print(f"DEBUG: Guardando contexto con fecha: {contexto}")
         self.update_conversation(telefono, self.ESTADO_AGENDAR_HORA, contexto)
-        
-        respuesta = f"Perfecto! Para el {fecha.strftime('%d/%m/%Y')} tenemos disponibles:\n\n"
-        for slot in slots:
-            respuesta += f"• {slot}\n"
-        respuesta += "\n¿A qué hora prefieres? (formato HH:MM, ejemplo: 14:30)\n\n⏰ Horario: 8:00 - 17:00 (Almuerzo: 12:00 - 13:00)"
         
         return respuesta
     
     def handle_agendar_hora(self, telefono: str, mensaje: str) -> str:
         """Maneja la hora en el flujo de agendar"""
-        valida, hora = self.is_valid_time(mensaje)
-        
-        if not valida:
-            return "❌ Hora inválida. Por favor verifica:\n\n• Usa formato HH:MM\n• Horario: 8:00 a 17:00\n• Almuerzo: 12:00 a 13:00 (no disponible)\n• Solo en punto o media hora (ej: 10:00, 10:30)\n\nIntenta nuevamente."
-        
         conv = self.get_or_create_conversation(telefono)
         contexto = conv.contexto or {}
         
@@ -474,6 +492,21 @@ Por favor, responde con el número de la opción que deseas."""
         if "fecha" not in contexto:
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             return "❌ Hubo un error. Por favor, comienza de nuevo.\n\n" + self.show_menu(telefono)
+        
+        # Procesar selección de horario por número
+        try:
+            numero = int(mensaje)
+            horarios_map = contexto.get("horarios_map", {})
+            horarios_map = {int(k): v for k, v in horarios_map.items()}
+            
+            if numero not in horarios_map:
+                return "Número inválido. Por favor, elige un número de la lista."
+            
+            hora_str = horarios_map[numero]
+            hora = parser.parse(hora_str).time()
+            
+        except (ValueError, KeyError):
+            return "Por favor, responde con el número del horario que deseas."
         
         fecha = parser.parse(contexto["fecha"])
         fecha_hora = datetime.combine(fecha.date(), hora)
@@ -664,7 +697,18 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
         if not slots:
             return f"😔 No hay horarios disponibles para el {fecha.strftime('%d/%m/%Y')}.\n\nPor favor, elige otra fecha."
         
+        # Crear mapa de horarios
+        horarios_map = {}
+        respuesta = f"Para el {fecha.strftime('%d/%m/%Y')} tenemos:\n\n"
+        
+        for i, slot in enumerate(slots, 1):
+            respuesta += f"{i}. {slot}\n"
+            horarios_map[i] = slot
+        
+        respuesta += "\nResponde con el número del horario que prefieres."
+        
         contexto["nueva_fecha"] = fecha.isoformat()
+        contexto["horarios_map"] = horarios_map
         self.update_conversation(telefono, self.ESTADO_REAGENDAR_HORA, contexto)
         
         respuesta = f"Para el {fecha.strftime('%d/%m/%Y')} tenemos:\n\n"
@@ -676,13 +720,24 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
     
     def handle_reagendar_hora(self, telefono: str, mensaje: str) -> str:
         """Maneja la nueva hora en el flujo de reagendar"""
-        valida, hora = self.is_valid_time(mensaje)
-        
-        if not valida:
-            return "❌ Hora inválida. Por favor verifica:\n\n• Usa formato HH:MM\n• Horario: 8:00 a 17:00\n• Almuerzo: 12:00 a 13:00 (no disponible)\n• Solo en punto o media hora\n\nIntenta nuevamente."
-        
         conv = self.get_or_create_conversation(telefono)
         contexto = conv.contexto
+        
+        # Procesar selección de horario por número
+        try:
+            numero = int(mensaje)
+            horarios_map = contexto.get("horarios_map", {})
+            horarios_map = {int(k): v for k, v in horarios_map.items()}
+            
+            if numero not in horarios_map:
+                return "Número inválido. Por favor, elige un número de la lista."
+            
+            hora_str = horarios_map[numero]
+            hora = parser.parse(hora_str).time()
+            
+        except (ValueError, KeyError):
+            return "Por favor, responde con el número del horario que deseas."
+        
         fecha = parser.parse(contexto["nueva_fecha"])
         fecha_hora = datetime.combine(fecha.date(), hora)
         duracion = contexto.get("duracion_minutos", 30)
@@ -693,9 +748,15 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             if not slots:
                 return "😔 Ese horario ya no está disponible y no quedan más espacios.\n\nPor favor, elige otra fecha."
             
+            # Crear nuevo mapa de horarios
+            horarios_map = {}
             respuesta = "😔 Ese horario ya está ocupado. Disponibles:\n\n"
-            for slot in slots:
-                respuesta += f"• {slot}\n"
+            for i, slot in enumerate(slots, 1):
+                respuesta += f"{i}. {slot}\n"
+                horarios_map[i] = slot
+            respuesta += "\nResponde con el número del horario que prefieres."
+            contexto["horarios_map"] = horarios_map
+            self.update_conversation(telefono, self.ESTADO_REAGENDAR_HORA, contexto)
             return respuesta
         
         contexto["nueva_fecha_hora"] = fecha_hora.isoformat()
