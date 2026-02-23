@@ -396,12 +396,10 @@ class ChatbotLogic:
     
     def process_message(self, telefono: str, mensaje: str) -> str:
         """Procesa un mensaje y retorna la respuesta"""
-        conv = self.get_or_create_conversation(telefono)
         mensaje_original = mensaje
         mensaje = mensaje.strip().lower()
         
         print(f"DEBUG process_message: telefono={telefono}, mensaje='{mensaje}'")
-        print(f"DEBUG: modo_humano actual = {conv.modo_humano}")
         
         # PRIORIDAD 1: Detectar si el encargado quiere reactivar el bot
         if self.detect_bot_reactivation(mensaje):
@@ -410,7 +408,10 @@ class ChatbotLogic:
             return "bot_reactivated"  # Señal especial para main.py
         
         # PRIORIDAD 2: Si está en modo humano, no procesar (dejar que el humano responda)
-        if self.is_human_mode_active(telefono):
+        is_human_active = self.is_human_mode_active(telefono)
+        print(f"DEBUG: is_human_mode_active = {is_human_active}")
+        
+        if is_human_active:
             print(f"DEBUG: Modo humano activo, no procesando mensaje")
             return "human_mode_active"  # Señal especial para main.py
         
@@ -418,6 +419,10 @@ class ChatbotLogic:
         if self.detect_human_intent(mensaje):
             print(f"DEBUG: Detectada intención de hablar con humano")
             return "handoff_to_human"  # Señal especial para main.py
+        
+        # Obtener conversación para el resto del procesamiento
+        conv = self.get_or_create_conversation(telefono)
+        print(f"DEBUG: estado actual = {conv.estado}")
         
         # Si el usuario saluda, siempre mostrar el menú
         saludos = ["hola", "hi", "hello", "buenos dias", "buenas tardes", "buenas noches", "hey", "ola"]
