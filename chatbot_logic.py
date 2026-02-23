@@ -109,10 +109,14 @@ class ChatbotLogic:
         """Detecta si el encargado quiere reactivar el bot"""
         mensaje_lower = mensaje.lower().strip()
         
+        print(f"DEBUG detect_bot_reactivation: mensaje='{mensaje_lower}'")
+        
         for phrase in self.bot_reactivation_phrases:
             if phrase in mensaje_lower:
+                print(f"DEBUG: Frase de reactivación detectada: '{phrase}'")
                 return True
         
+        print(f"DEBUG: No se detectó frase de reactivación")
         return False
     
     async def send_human_handoff_webhook(self, telefono: str, mensaje: str, nombre: str = None):
@@ -144,6 +148,7 @@ class ChatbotLogic:
     
     def activate_human_mode(self, telefono: str):
         """Activa el modo humano para un paciente"""
+        print(f"DEBUG: Activando modo humano para {telefono}")
         conv = self.get_or_create_conversation(telefono)
         from sqlalchemy import update
         self.db.execute(
@@ -152,10 +157,14 @@ class ChatbotLogic:
             values(modo_humano="true", fecha_modo_humano=datetime.utcnow())
         )
         self.db.commit()
-        self.db.refresh(conv)
+        
+        # Verificar que se guardó
+        conv_check = self.db.query(Conversacion).filter(Conversacion.telefono == telefono).first()
+        print(f"DEBUG: Modo humano activado. Verificación: modo_humano={conv_check.modo_humano}")
     
     def deactivate_human_mode(self, telefono: str):
         """Desactiva el modo humano y reactiva el bot"""
+        print(f"DEBUG: Desactivando modo humano para {telefono}")
         conv = self.get_or_create_conversation(telefono)
         from sqlalchemy import update
         self.db.execute(
@@ -164,11 +173,17 @@ class ChatbotLogic:
             values(modo_humano="false", estado=self.ESTADO_MENU)
         )
         self.db.commit()
-        self.db.refresh(conv)
+        
+        # Verificar que se guardó
+        conv_check = self.db.query(Conversacion).filter(Conversacion.telefono == telefono).first()
+        print(f"DEBUG: Modo humano desactivado. Verificación: modo_humano={conv_check.modo_humano}, estado={conv_check.estado}")
     
     def is_human_mode_active(self, telefono: str) -> bool:
         """Verifica si el modo humano está activo"""
-        conv = self.get_or_create_conversation(telefono)
+        # Hacer query fresca para evitar cache
+        conv = self.db.query(Conversacion).filter(Conversacion.telefono == telefono).first()
+        if not conv:
+            return False
         return conv.modo_humano == "true"
     
     def get_or_create_conversation(self, telefono: str) -> Conversacion:
@@ -385,17 +400,23 @@ class ChatbotLogic:
         mensaje_original = mensaje
         mensaje = mensaje.strip().lower()
         
+        print(f"DEBUG process_message: telefono={telefono}, mensaje='{mensaje}'")
+        print(f"DEBUG: modo_humano actual = {conv.modo_humano}")
+        
         # PRIORIDAD 1: Detectar si el encargado quiere reactivar el bot
         if self.detect_bot_reactivation(mensaje):
+            print(f"DEBUG: Detectada reactivación del bot")
             self.deactivate_human_mode(telefono)
             return "bot_reactivated"  # Señal especial para main.py
         
         # PRIORIDAD 2: Si está en modo humano, no procesar (dejar que el humano responda)
         if self.is_human_mode_active(telefono):
+            print(f"DEBUG: Modo humano activo, no procesando mensaje")
             return "human_mode_active"  # Señal especial para main.py
         
         # PRIORIDAD 3: Detectar intención de hablar con humano (en cualquier momento)
         if self.detect_human_intent(mensaje):
+            print(f"DEBUG: Detectada intención de hablar con humano")
             return "handoff_to_human"  # Señal especial para main.py
         
         # Si el usuario saluda, siempre mostrar el menú
