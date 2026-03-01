@@ -1103,8 +1103,18 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
                 return "❌ No hay fechas disponibles en este momento. Por favor, intenta más tarde.\n\nEscribe 'menu' para volver al inicio."
             
             # Guardar cita seleccionada y días disponibles en contexto
+            # Convertir fecha_obj a string para que sea JSON serializable
+            dias_serializables = {}
+            for key, dia in enumerate(dias_laborales, 1):
+                dias_serializables[str(key)] = {
+                    'fecha': dia['fecha'],
+                    'dia_semana': dia['dia_semana'],
+                    'es_laborable': dia['es_laborable'],
+                    'festivo': dia.get('festivo', '')
+                }
+            
             contexto["cita_id"] = cita['id']
-            contexto["dias_disponibles"] = {str(i+1): dia for i, dia in enumerate(dias_laborales)}
+            contexto["dias_disponibles"] = dias_serializables
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
             
             # Construir mensaje con catálogo de fechas
@@ -1144,8 +1154,11 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             # Obtener fecha seleccionada
             dia_seleccionado = dias_disponibles[str(numero_fecha)]
             fecha_str = dia_seleccionado['fecha']  # YYYY-MM-DD
-            fecha_obj = dia_seleccionado['fecha_obj']
             dia_semana = dia_seleccionado['dia_semana']
+            
+            # Convertir fecha_str a objeto date para formateo
+            from datetime import datetime
+            fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date()
             
             # Obtener horas disponibles para esa fecha
             sheets_client = get_sheets_client()
