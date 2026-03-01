@@ -1,14 +1,17 @@
 from datetime import datetime, timedelta, time
 from typing import Optional, List, Tuple, Dict
-from sqlalchemy.orm import Session
-from database import Paciente, Cita, Conversacion, Doctor, Servicio
+# === POSTGRESQL COMPLETAMENTE DESACTIVADO ===
+# Fecha: 28/02/2026
+# Las siguientes imports de database ya NO se usan
+# from sqlalchemy.orm import Session
+# from database import Paciente, Cita, Conversacion, Doctor, Servicio
 from dateutil import parser
 import re
 import httpx
 
 # === MIGRACIÓN A GOOGLE SHEETS ===
 # Fecha: 28/02/2026
-# Nueva fuente de datos para citas
+# Nueva fuente de datos para TODO (citas, conversaciones, pacientes)
 from google_sheets_client import get_sheets_client
 
 class ChatbotLogic:
@@ -43,8 +46,9 @@ class ChatbotLogic:
     HORA_ALMUERZO_INICIO = 12  # 12:00 PM
     HORA_ALMUERZO_FIN = 13     # 1:00 PM
     
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self):
+        """Inicializa el chatbot SIN PostgreSQL - TODO en Google Sheets"""
+        self.sheets_client = get_sheets_client()
         
         # Palabras clave para detectar intención de hablar con humano
         self.human_intent_keywords = [
@@ -128,17 +132,17 @@ class ChatbotLogic:
         """Envía notificación al webhook cuando se solicita atención humana"""
         webhook_url = "https://n8n-n8n.dtbfmw.easypanel.host/webhook-test/bfaba3be-b713-49ff-812e-5a9cb27cf128"
         
-        # Obtener información del paciente
-        paciente = self.db.query(Paciente).filter(Paciente.telefono == telefono).first()
+        # Obtener información del paciente desde Google Sheets
+        paciente = self.sheets_client.get_patient(telefono)
         conv = self.get_or_create_conversation(telefono)
         
         payload = {
             "telefono": telefono,
-            "nombre": nombre or (paciente.nombre if paciente else "Desconocido"),
+            "nombre": nombre or (paciente['nombre'] if paciente else "Desconocido"),
             "ultimo_mensaje": mensaje,
             "fecha_hora": datetime.now().isoformat(),
-            "estado_conversacion": conv.estado,
-            "contexto": conv.contexto,
+            "estado_conversacion": conv['estado'] if conv else 'inicial',
+            "contexto": conv['contexto'] if conv else {},
             "tipo_evento": "solicitud_atencion_humana"
         }
         
@@ -154,95 +158,42 @@ class ChatbotLogic:
     def activate_human_mode(self, telefono: str):
         """Activa el modo humano para un paciente"""
         print(f"DEBUG: Activando modo humano para {telefono}")
-        conv = self.get_or_create_conversation(telefono)
-        from sqlalchemy import update
-        self.db.execute(
-            update(Conversacion).
-            where(Conversacion.telefono == telefono).
-            values(modo_humano="true", fecha_modo_humano=datetime.utcnow())
-        )
-        self.db.commit()
-        
-        # Verificar que se guardó
-        conv_check = self.db.query(Conversacion).filter(Conversacion.telefono == telefono).first()
-        print(f"DEBUG: Modo humano activado. Verificación: modo_humano={conv_check.modo_humano}")
+        self.sheets_client.activate_human_mode(telefono)
+        print(f"DEBUG: Modo humano activado")
     
     def deactivate_human_mode(self, telefono: str):
         """Desactiva el modo humano y reactiva el bot"""
         print(f"DEBUG: Desactivando modo humano para {telefono}")
-        conv = self.get_or_create_conversation(telefono)
-        from sqlalchemy import update
-        self.db.execute(
-            update(Conversacion).
-            where(Conversacion.telefono == telefono).
-            values(modo_humano="false", estado=self.ESTADO_MENU)
-        )
-        self.db.commit()
-        
-        # Verificar que se guardó
-        conv_check = self.db.query(Conversacion).filter(Conversacion.telefono == telefono).first()
-        print(f"DEBUG: Modo humano desactivado. Verificación: modo_humano={conv_check.modo_humano}, estado={conv_check.estado}")
+        self.sheets_client.deactivate_human_mode(telefono)
+        print(f"DEBUG: Modo humano desactivado")
     
     def is_human_mode_active(self, telefono: str) -> bool:
         """Verifica si el modo humano está activo"""
-        # Hacer query fresca para evitar cache
-        conv = self.db.query(Conversacion).filter(Conversacion.telefono == telefono).first()
-        if not conv:
-            return False
-        
-        # Manejar tanto boolean como string
-        modo = conv.modo_humano
-        print(f"DEBUG is_human_mode_active: modo_humano={modo}, tipo={type(modo)}")
-        
-        if isinstance(modo, bool):
-            return modo
-        elif isinstance(modo, str):
-            return modo.lower() in ["true", "1", "yes"]
-        else:
-            return False
+        is_active = self.sheets_client.is_human_mode_active(telefono)
+        print(f"DEBUG is_human_mode_active: modo_humano={is_active}")
+        return is_active
     
-    def get_or_create_conversation(self, telefono: str) -> Conversacion:
-        """Obtiene o crea una conversación"""
-        conv = self.db.query(Conversacion).filter(Conversacion.telefono == telefono).first()
+    def get_or_create_conversation(self, telefono: str) -> Dict:
+        """Obtiene o crea una conversación en Google Sheets"""
+        conv = self.sheets_client.get_conversation(telefono)
         if not conv:
-            conv = Conversacion(
-                telefono=telefono,
-                estado=self.ESTADO_INICIAL,
-                contexto={}
-            )
-            self.db.add(conv)
-            self.db.commit()
-            self.db.refresh(conv)
+            self.sheets_client.create_or_update_conversation(telefono, self.ESTADO_INICIAL, {})
+            conv = self.sheets_client.get_conversation(telefono)
         return conv
     
     def update_conversation(self, telefono: str, estado: str, contexto: dict = None):
-        """Actualiza el estado de la conversación"""
-        conv = self.get_or_create_conversation(telefono)
-        conv.estado = estado
-        if contexto is not None:
-            # Forzar actualización del JSONB
-            from sqlalchemy import update
-            self.db.execute(
-                update(Conversacion).
-                where(Conversacion.telefono == telefono).
-                values(estado=estado, contexto=contexto, ultima_interaccion=datetime.utcnow())
-            )
-        else:
-            conv.ultima_interaccion = datetime.utcnow()
-        self.db.commit()
-        self.db.refresh(conv)
+        """Actualiza el estado de la conversación en Google Sheets"""
+        self.sheets_client.create_or_update_conversation(telefono, estado, contexto)
     
-    def get_or_create_patient(self, telefono: str, nombre: str = None) -> Paciente:
-        """Obtiene o crea un paciente"""
-        paciente = self.db.query(Paciente).filter(Paciente.telefono == telefono).first()
+    def get_or_create_patient(self, telefono: str, nombre: str = None) -> Dict:
+        """Obtiene o crea un paciente en Google Sheets"""
+        paciente = self.sheets_client.get_patient(telefono)
         if not paciente:
-            paciente = Paciente(telefono=telefono, nombre=nombre)
-            self.db.add(paciente)
-            self.db.commit()
-            self.db.refresh(paciente)
-        elif nombre and not paciente.nombre:
-            paciente.nombre = nombre
-            self.db.commit()
+            self.sheets_client.create_or_update_patient(telefono, nombre)
+            paciente = self.sheets_client.get_patient(telefono)
+        elif nombre and not paciente.get('nombre'):
+            self.sheets_client.create_or_update_patient(telefono, nombre)
+            paciente = self.sheets_client.get_patient(telefono)
         return paciente
     
     def is_valid_date(self, fecha_str: str) -> Tuple[bool, Optional[datetime]]:
@@ -510,8 +461,8 @@ class ChatbotLogic:
     
     def show_menu(self, telefono: str) -> str:
         """Muestra el menú principal"""
-        paciente = self.db.query(Paciente).filter(Paciente.telefono == telefono).first()
-        nombre = f" {paciente.nombre}" if paciente and paciente.nombre else ""
+        paciente = self.sheets_client.get_patient(telefono)
+        nombre = f" {paciente['nombre']}" if paciente and paciente.get('nombre') else ""
         
         self.update_conversation(telefono, self.ESTADO_MENU, {})
         

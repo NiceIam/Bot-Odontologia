@@ -1,12 +1,13 @@
-from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from database import get_db, engine, Base
+# === POSTGRESQL COMPLETAMENTE DESACTIVADO ===
+# Fecha: 28/02/2026
+# from sqlalchemy.orm import Session
+# from database import get_db, engine, Base
 from chatbot_logic import ChatbotLogic
 from evolution_client import evolution_client
 from config import get_settings
 import logging
-import time
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -14,36 +15,23 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
-# Intentar conectar a la base de datos con reintentos
-max_retries = 5
-retry_delay = 2
-
-for attempt in range(max_retries):
-    try:
-        logger.info(f"Intentando conectar a la base de datos (intento {attempt + 1}/{max_retries})...")
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Conexión a base de datos exitosa")
-        break
-    except Exception as e:
-        logger.error(f"❌ Error conectando a base de datos: {str(e)}")
-        if attempt < max_retries - 1:
-            logger.info(f"Reintentando en {retry_delay} segundos...")
-            time.sleep(retry_delay)
-        else:
-            logger.error("❌ No se pudo conectar a la base de datos después de varios intentos")
-            # Continuar de todas formas para que el health check responda
+# === POSTGRESQL DESACTIVADO ===
+# Ya no intentamos conectar a PostgreSQL
+# Todo se maneja en Google Sheets
+logger.info("✅ Sistema configurado para usar Google Sheets (sin PostgreSQL)")
 
 app = FastAPI(
     title="Chatbot Clínica Odontológica",
     description="Sistema de gestión de citas vía WhatsApp",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 Aplicación iniciada correctamente")
     logger.info(f"📊 Configuración:")
-    logger.info(f"   - Database: {settings.database_url[:30]}...")
+    logger.info(f"   - Google Sheets: Activo")
+    logger.info(f"   - PostgreSQL: Desactivado")
     logger.info(f"   - Evolution API: {settings.evolution_api_url}")
     logger.info(f"   - Instance: {settings.evolution_instance_name}")
     logger.info(f"   - Port: {settings.port}")
@@ -65,25 +53,14 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Verifica el estado del servicio"""
-    db_status = "unknown"
-    try:
-        # Verificar conexión a base de datos
-        db = next(get_db())
-        db.execute("SELECT 1")
-        db.close()
-        db_status = "connected"
-    except Exception as e:
-        logger.error(f"Health check DB error: {str(e)}")
-        db_status = f"error: {str(e)}"
-    
     return {
         "status": "healthy",
-        "database": db_status,
+        "database": "Google Sheets (PostgreSQL desactivado)",
         "evolution_api": settings.evolution_api_url
     }
 
 @app.post("/webhook")
-async def webhook(request: Request, db: Session = Depends(get_db)):
+async def webhook(request: Request):
     """
     Endpoint webhook para recibir mensajes de Evolution API
     """
@@ -123,8 +100,8 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
         
         logger.info(f"Procesando mensaje de {telefono}: {mensaje}")
         
-        # Procesar mensaje con la lógica del chatbot
-        chatbot = ChatbotLogic(db)
+        # Procesar mensaje con la lógica del chatbot (SIN PostgreSQL)
+        chatbot = ChatbotLogic()
         respuesta = chatbot.process_message(telefono, mensaje)
         
         # Manejar señales especiales
@@ -212,25 +189,18 @@ async def send_message(phone: str, message: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/appointments/{phone}")
-async def get_appointments(phone: str, db: Session = Depends(get_db)):
+async def get_appointments(phone: str):
     """
     Endpoint para consultar citas de un paciente (útil para testing)
     """
     try:
-        chatbot = ChatbotLogic(db)
-        citas = chatbot.get_patient_appointments(phone)
+        chatbot = ChatbotLogic()
+        sheets_client = chatbot.sheets_client
+        citas = sheets_client.get_appointments_by_phone(phone)
         
         return {
             "phone": phone,
-            "appointments": [
-                {
-                    "id": cita.id,
-                    "fecha_hora": cita.fecha_hora.isoformat(),
-                    "motivo": cita.motivo,
-                    "estado": cita.estado
-                }
-                for cita in citas
-            ]
+            "appointments": citas
         }
     except Exception as e:
         logger.error(f"Error consultando citas: {str(e)}")

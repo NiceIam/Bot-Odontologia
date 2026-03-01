@@ -1,7 +1,7 @@
 """
-Google Sheets Client para gestión de citas
+Google Sheets Client para gestión de citas, conversaciones y pacientes
 Fecha de creación: 28/02/2026
-Propósito: Reemplazar PostgreSQL como fuente de datos para citas
+Propósito: Reemplazar PostgreSQL completamente como fuente de datos
 """
 
 from datetime import datetime
@@ -16,7 +16,7 @@ settings = get_settings()
 
 
 class GoogleSheetsClient:
-    """Cliente para interactuar con Google Sheets como base de datos de citas"""
+    """Cliente para interactuar con Google Sheets como base de datos completa"""
     
     def __init__(self):
         """Inicializa el cliente de Google Sheets con las credenciales"""
@@ -31,19 +31,27 @@ class GoogleSheetsClient:
             
             self.service = build('sheets', 'v4', credentials=self.credentials)
             self.spreadsheet_id = settings.spreadsheet_id
-            self.sheet_name = settings.sheet_name
+            
+            # Nombres de las hojas
+            self.sheet_citas = settings.sheet_name  # "Citas"
+            self.sheet_conversaciones = "Conversaciones"
+            self.sheet_pacientes = "Pacientes"
             
             print(f"✅ Google Sheets Client inicializado correctamente")
             print(f"   Spreadsheet ID: {self.spreadsheet_id}")
-            print(f"   Sheet Name: {self.sheet_name}")
+            print(f"   Sheets: {self.sheet_citas}, {self.sheet_conversaciones}, {self.sheet_pacientes}")
             
         except Exception as e:
             print(f"❌ Error inicializando Google Sheets Client: {str(e)}")
             raise
     
-    def _get_range(self, range_name: str) -> str:
+    def _get_range(self, sheet_name: str, range_name: str) -> str:
         """Construye el rango completo con el nombre de la hoja"""
-        return f"{self.sheet_name}!{range_name}"
+        return f"{sheet_name}!{range_name}"
+    
+    # ============================================================================
+    # === GESTIÓN DE CITAS ===
+    # ============================================================================
     
     def get_all_appointments(self) -> List[Dict]:
         """
@@ -55,7 +63,7 @@ class GoogleSheetsClient:
         try:
             result = self.service.spreadsheets().values().get(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range('A2:H')  # Asumiendo headers en fila 1
+                range=self._get_range(self.sheet_citas, 'A2:H')
             ).execute()
             
             values = result.get('values', [])
@@ -63,10 +71,8 @@ class GoogleSheetsClient:
             if not values:
                 return []
             
-            # Convertir a lista de diccionarios
             appointments = []
             for row in values:
-                # Asegurar que la fila tenga suficientes columnas
                 while len(row) < 8:
                     row.append('')
                 
@@ -88,18 +94,9 @@ class GoogleSheetsClient:
             return []
     
     def get_appointments_by_phone(self, telefono: str) -> List[Dict]:
-        """
-        Obtiene las citas de un paciente específico por teléfono
-        
-        Args:
-            telefono: Número de teléfono del paciente
-            
-        Returns:
-            Lista de citas del paciente
-        """
+        """Obtiene las citas de un paciente específico por teléfono"""
         all_appointments = self.get_all_appointments()
         
-        # Filtrar por teléfono y estado activo
         patient_appointments = [
             apt for apt in all_appointments 
             if apt['telefono'] == telefono and apt['estado'].lower() != 'cancelada'
@@ -108,15 +105,7 @@ class GoogleSheetsClient:
         return patient_appointments
     
     def get_appointment_by_id(self, appointment_id: str) -> Optional[Dict]:
-        """
-        Obtiene una cita específica por ID
-        
-        Args:
-            appointment_id: ID de la cita
-            
-        Returns:
-            Diccionario con los datos de la cita o None si no existe
-        """
+        """Obtiene una cita específica por ID"""
         all_appointments = self.get_all_appointments()
         
         for apt in all_appointments:
@@ -126,34 +115,22 @@ class GoogleSheetsClient:
         return None
     
     def update_appointment(self, appointment_id: str, updates: Dict) -> bool:
-        """
-        Actualiza una cita existente
-        
-        Args:
-            appointment_id: ID de la cita a actualizar
-            updates: Diccionario con los campos a actualizar
-            
-        Returns:
-            True si se actualizó correctamente, False en caso contrario
-        """
+        """Actualiza una cita existente"""
         try:
-            # Obtener todas las citas para encontrar la fila
             all_appointments = self.get_all_appointments()
             
             row_index = None
             for i, apt in enumerate(all_appointments):
                 if apt['id'] == appointment_id:
-                    row_index = i + 2  # +2 porque: +1 por header, +1 por índice 0
+                    row_index = i + 2
                     break
             
             if row_index is None:
                 print(f"❌ Cita con ID {appointment_id} no encontrada")
                 return False
             
-            # Obtener la fila actual
             current_row = all_appointments[row_index - 2]
             
-            # Aplicar actualizaciones
             if 'fecha' in updates:
                 current_row['fecha'] = updates['fecha']
             if 'hora' in updates:
@@ -165,7 +142,6 @@ class GoogleSheetsClient:
             if 'notas' in updates:
                 current_row['notas'] = updates['notas']
             
-            # Preparar valores para actualizar
             values = [[
                 current_row['id'],
                 current_row['telefono'],
@@ -177,12 +153,11 @@ class GoogleSheetsClient:
                 current_row['notas']
             ]]
             
-            # Actualizar en Google Sheets
             body = {'values': values}
             
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range(f'A{row_index}:H{row_index}'),
+                range=self._get_range(self.sheet_citas, f'A{row_index}:H{row_index}'),
                 valueInputOption='RAW',
                 body=body
             ).execute()
@@ -195,30 +170,215 @@ class GoogleSheetsClient:
             return False
     
     def cancel_appointment(self, appointment_id: str) -> bool:
-        """
-        Marca una cita como cancelada (NO la elimina)
-        
-        Args:
-            appointment_id: ID de la cita a cancelar
-            
-        Returns:
-            True si se canceló correctamente, False en caso contrario
-        """
+        """Marca una cita como cancelada (NO la elimina)"""
         return self.update_appointment(appointment_id, {'estado': 'cancelada'})
     
     def format_appointment(self, appointment: Dict) -> str:
-        """
-        Formatea una cita para mostrar al usuario
-        
-        Args:
-            appointment: Diccionario con los datos de la cita
-            
-        Returns:
-            String formateado con la información de la cita
-        """
+        """Formatea una cita para mostrar al usuario"""
         return f"""📅 {appointment['fecha']} a las {appointment['hora']}
 💼 Servicio: {appointment['servicio']}
 📝 Estado: {appointment['estado']}"""
+    
+    # ============================================================================
+    # === GESTIÓN DE CONVERSACIONES ===
+    # ============================================================================
+    
+    def get_conversation(self, telefono: str) -> Optional[Dict]:
+        """Obtiene la conversación de un usuario"""
+        try:
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=self._get_range(self.sheet_conversaciones, 'A2:F')
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            for row in values:
+                while len(row) < 6:
+                    row.append('')
+                
+                if row[0] == telefono:
+                    return {
+                        'telefono': row[0],
+                        'estado': row[1],
+                        'contexto': json.loads(row[2]) if row[2] else {},
+                        'modo_humano': row[3],
+                        'fecha_modo_humano': row[4],
+                        'ultima_interaccion': row[5]
+                    }
+            
+            return None
+            
+        except HttpError as e:
+            print(f"❌ Error obteniendo conversación: {str(e)}")
+            return None
+    
+    def create_or_update_conversation(self, telefono: str, estado: str, contexto: Dict = None, modo_humano: str = "false") -> bool:
+        """Crea o actualiza una conversación"""
+        try:
+            # Buscar si existe
+            existing = self.get_conversation(telefono)
+            
+            contexto_json = json.dumps(contexto if contexto else {})
+            ultima_interaccion = datetime.utcnow().isoformat()
+            
+            if existing:
+                # Actualizar existente
+                result = self.service.spreadsheets().values().get(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=self._get_range(self.sheet_conversaciones, 'A2:F')
+                ).execute()
+                
+                values = result.get('values', [])
+                row_index = None
+                
+                for i, row in enumerate(values):
+                    if row[0] == telefono:
+                        row_index = i + 2
+                        break
+                
+                if row_index:
+                    fecha_modo_humano = existing.get('fecha_modo_humano', '')
+                    if modo_humano == "true" and existing.get('modo_humano') != "true":
+                        fecha_modo_humano = ultima_interaccion
+                    
+                    values = [[telefono, estado, contexto_json, modo_humano, fecha_modo_humano, ultima_interaccion]]
+                    
+                    body = {'values': values}
+                    self.service.spreadsheets().values().update(
+                        spreadsheetId=self.spreadsheet_id,
+                        range=self._get_range(self.sheet_conversaciones, f'A{row_index}:F{row_index}'),
+                        valueInputOption='RAW',
+                        body=body
+                    ).execute()
+            else:
+                # Crear nueva
+                values = [[telefono, estado, contexto_json, modo_humano, '', ultima_interaccion]]
+                
+                body = {'values': values}
+                self.service.spreadsheets().values().append(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=self._get_range(self.sheet_conversaciones, 'A2:F'),
+                    valueInputOption='RAW',
+                    body=body
+                ).execute()
+            
+            return True
+            
+        except HttpError as e:
+            print(f"❌ Error creando/actualizando conversación: {str(e)}")
+            return False
+    
+    def is_human_mode_active(self, telefono: str) -> bool:
+        """Verifica si el modo humano está activo"""
+        conv = self.get_conversation(telefono)
+        if not conv:
+            return False
+        
+        modo = conv.get('modo_humano', 'false')
+        return modo.lower() in ["true", "1", "yes"]
+    
+    def activate_human_mode(self, telefono: str) -> bool:
+        """Activa el modo humano"""
+        conv = self.get_conversation(telefono)
+        estado = conv['estado'] if conv else 'inicial'
+        contexto = conv['contexto'] if conv else {}
+        
+        return self.create_or_update_conversation(telefono, estado, contexto, modo_humano="true")
+    
+    def deactivate_human_mode(self, telefono: str) -> bool:
+        """Desactiva el modo humano"""
+        conv = self.get_conversation(telefono)
+        contexto = conv['contexto'] if conv else {}
+        
+        return self.create_or_update_conversation(telefono, 'menu', contexto, modo_humano="false")
+    
+    # ============================================================================
+    # === GESTIÓN DE PACIENTES ===
+    # ============================================================================
+    
+    def get_patient(self, telefono: str) -> Optional[Dict]:
+        """Obtiene un paciente por teléfono"""
+        try:
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=self._get_range(self.sheet_pacientes, 'A2:E')
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            for row in values:
+                while len(row) < 5:
+                    row.append('')
+                
+                if row[0] == telefono:
+                    return {
+                        'telefono': row[0],
+                        'nombre': row[1],
+                        'email': row[2],
+                        'fecha_nacimiento': row[3],
+                        'created_at': row[4]
+                    }
+            
+            return None
+            
+        except HttpError as e:
+            print(f"❌ Error obteniendo paciente: {str(e)}")
+            return None
+    
+    def create_or_update_patient(self, telefono: str, nombre: str = None, email: str = None, fecha_nacimiento: str = None) -> bool:
+        """Crea o actualiza un paciente"""
+        try:
+            existing = self.get_patient(telefono)
+            
+            if existing:
+                # Actualizar solo si hay nuevos datos
+                result = self.service.spreadsheets().values().get(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=self._get_range(self.sheet_pacientes, 'A2:E')
+                ).execute()
+                
+                values = result.get('values', [])
+                row_index = None
+                
+                for i, row in enumerate(values):
+                    if row[0] == telefono:
+                        row_index = i + 2
+                        break
+                
+                if row_index:
+                    nombre_final = nombre if nombre else existing.get('nombre', '')
+                    email_final = email if email else existing.get('email', '')
+                    fecha_nac_final = fecha_nacimiento if fecha_nacimiento else existing.get('fecha_nacimiento', '')
+                    created_at = existing.get('created_at', datetime.utcnow().isoformat())
+                    
+                    values = [[telefono, nombre_final, email_final, fecha_nac_final, created_at]]
+                    
+                    body = {'values': values}
+                    self.service.spreadsheets().values().update(
+                        spreadsheetId=self.spreadsheet_id,
+                        range=self._get_range(self.sheet_pacientes, f'A{row_index}:E{row_index}'),
+                        valueInputOption='RAW',
+                        body=body
+                    ).execute()
+            else:
+                # Crear nuevo
+                created_at = datetime.utcnow().isoformat()
+                values = [[telefono, nombre or '', email or '', fecha_nacimiento or '', created_at]]
+                
+                body = {'values': values}
+                self.service.spreadsheets().values().append(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=self._get_range(self.sheet_pacientes, 'A2:E'),
+                    valueInputOption='RAW',
+                    body=body
+                ).execute()
+            
+            return True
+            
+        except HttpError as e:
+            print(f"❌ Error creando/actualizando paciente: {str(e)}")
+            return False
 
 
 # Instancia global del cliente

@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 class Settings(BaseSettings):
-    # PostgreSQL
-    database_url: str
+    # === PostgreSQL DESACTIVADO ===
+    # database_url: str
     
     # Evolution API
     evolution_api_url: str
