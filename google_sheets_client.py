@@ -63,7 +63,7 @@ class GoogleSheetsClient:
         try:
             result = self.service.spreadsheets().values().get(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range(self.sheet_citas, 'A2:H')
+                range=self._get_range(self.sheet_citas, 'A2:N')  # A-N = 14 columnas
             ).execute()
             
             values = result.get('values', [])
@@ -73,18 +73,25 @@ class GoogleSheetsClient:
             
             appointments = []
             for row in values:
-                while len(row) < 8:
+                # Asegurar que la fila tenga suficientes columnas
+                while len(row) < 14:
                     row.append('')
                 
                 appointments.append({
-                    'id': row[0],
-                    'telefono': row[1],
-                    'nombre': row[2],
-                    'servicio': row[3],
-                    'fecha': row[4],
-                    'hora': row[5],
-                    'estado': row[6],
-                    'notas': row[7]
+                    'id': row[0],  # ID
+                    'nombre': row[1],  # Nombre
+                    'email': row[2],  # Correo
+                    'telefono': row[3],  # Teléfono
+                    'fecha': row[4],  # Fecha
+                    'hora': row[5],  # Hora
+                    'estado': row[6],  # Estado
+                    'accion': row[7],  # Acción
+                    'servicio': row[8],  # Servicio
+                    'hora_fin': row[9],  # Hora fin
+                    'duracion': row[10],  # Duración
+                    'doctora': row[11],  # Doctora
+                    'fecha_creacion': row[12],  # FechaCreación
+                    'fecha_actualizacion': row[13]  # FechaActualización
                 })
             
             return appointments
@@ -99,7 +106,7 @@ class GoogleSheetsClient:
         
         patient_appointments = [
             apt for apt in all_appointments 
-            if apt['telefono'] == telefono and apt['estado'].lower() != 'cancelada'
+            if apt['telefono'] == telefono and apt['estado'].lower() not in ['cancelada', 'atendida']
         ]
         
         return patient_appointments
@@ -131,6 +138,7 @@ class GoogleSheetsClient:
             
             current_row = all_appointments[row_index - 2]
             
+            # Aplicar actualizaciones
             if 'fecha' in updates:
                 current_row['fecha'] = updates['fecha']
             if 'hora' in updates:
@@ -139,25 +147,35 @@ class GoogleSheetsClient:
                 current_row['servicio'] = updates['servicio']
             if 'estado' in updates:
                 current_row['estado'] = updates['estado']
-            if 'notas' in updates:
-                current_row['notas'] = updates['notas']
+            if 'hora_fin' in updates:
+                current_row['hora_fin'] = updates['hora_fin']
             
+            # Actualizar fecha de actualización
+            current_row['fecha_actualizacion'] = datetime.utcnow().isoformat()
+            
+            # Preparar valores para actualizar
             values = [[
                 current_row['id'],
-                current_row['telefono'],
                 current_row['nombre'],
-                current_row['servicio'],
+                current_row['email'],
+                current_row['telefono'],
                 current_row['fecha'],
                 current_row['hora'],
                 current_row['estado'],
-                current_row['notas']
+                current_row['accion'],
+                current_row['servicio'],
+                current_row['hora_fin'],
+                current_row['duracion'],
+                current_row['doctora'],
+                current_row['fecha_creacion'],
+                current_row['fecha_actualizacion']
             ]]
             
             body = {'values': values}
             
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
-                range=self._get_range(self.sheet_citas, f'A{row_index}:H{row_index}'),
+                range=self._get_range(self.sheet_citas, f'A{row_index}:N{row_index}'),
                 valueInputOption='RAW',
                 body=body
             ).execute()
@@ -171,12 +189,13 @@ class GoogleSheetsClient:
     
     def cancel_appointment(self, appointment_id: str) -> bool:
         """Marca una cita como cancelada (NO la elimina)"""
-        return self.update_appointment(appointment_id, {'estado': 'cancelada'})
+        return self.update_appointment(appointment_id, {'estado': 'Cancelada'})
     
     def format_appointment(self, appointment: Dict) -> str:
         """Formatea una cita para mostrar al usuario"""
         return f"""📅 {appointment['fecha']} a las {appointment['hora']}
 💼 Servicio: {appointment['servicio']}
+👩‍⚕️ Doctora: {appointment['doctora']}
 📝 Estado: {appointment['estado']}"""
     
     # ============================================================================

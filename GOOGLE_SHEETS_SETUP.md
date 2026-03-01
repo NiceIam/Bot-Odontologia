@@ -17,34 +17,42 @@ Este spreadsheet debe contener 3 hojas (sheets) con las siguientes estructuras:
 
 ### Estructura de Columnas (Fila 1 - Headers):
 
-| A | B | C | D | E | F | G | H |
-|---|---|---|---|---|---|---|---|
-| id | telefono | nombre | servicio | fecha | hora | estado | notas |
+| A | B | C | D | E | F | G | H | I | J | K | L | M | N |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ID | Nombre | Correo | Teléfono | Fecha | Hora | Estado | Acción | Servicio | Hora fin | Duracion | Doctora | FechaCreación | FechaActualización |
 
 ### Descripción de Columnas:
 
-- **A - id**: ID único de la cita (texto)
-- **B - telefono**: Número de teléfono del paciente (texto, ej: "5551234567")
-- **C - nombre**: Nombre completo del paciente (texto)
-- **D - servicio**: Nombre del servicio (texto, ej: "Limpieza Dental")
-- **E - fecha**: Fecha de la cita en formato DD/MM/AAAA (texto, ej: "05/03/2026")
-- **F - hora**: Hora de la cita en formato HH:MM (texto, ej: "14:30")
-- **G - estado**: Estado de la cita (texto: "agendada" o "cancelada")
-- **H - notas**: Notas adicionales (texto, opcional)
+- **A - ID**: ID único de la cita (texto/número)
+- **B - Nombre**: Nombre completo del paciente (texto)
+- **C - Correo**: Email del paciente (texto)
+- **D - Teléfono**: Número de teléfono del paciente (texto, ej: "3209855847")
+- **E - Fecha**: Fecha de la cita en formato DD/MM/AAAA (texto, ej: "20/02/2026")
+- **F - Hora**: Hora de inicio en formato H:MM (texto, ej: "8:00")
+- **G - Estado**: Estado de la cita (texto: "Agendada", "Atendida", "Cancelada")
+- **H - Acción**: Tipo de acción (texto, ej: "Agendamiento", "Reagendamiento")
+- **I - Servicio**: Nombre completo del servicio (texto, ej: "Ortodoncia - Valoración de Ortodoncia")
+- **J - Hora fin**: Hora de finalización (texto, ej: "8:30")
+- **K - Duracion**: Duración en minutos (texto/número, ej: "30")
+- **L - Doctora**: Nombre de la doctora (texto, ej: "Dra. Sandra Simancas")
+- **M - FechaCreación**: Fecha/hora de creación ISO 8601 (texto, ej: "2026-02-13T21:16:25.359Z")
+- **N - FechaActualización**: Fecha/hora de última actualización ISO 8601 (texto)
 
 ### Ejemplo de Datos:
 
 ```
-1 | 5551234567 | Juan Pérez | Limpieza Dental | 05/03/2026 | 14:30 | agendada | 
-2 | 5559876543 | María López | Ortodoncia | 06/03/2026 | 10:00 | agendada |
-3 | 5551112222 | Carlos Ruiz | Blanqueamiento | 07/03/2026 | 15:00 | cancelada | Cancelado por el paciente
+1029400483 | Luis Zaida | zaida.mateus175@gmail.com | 3209855847 | 20/02/2026 | 8:00 | Atendida | Agendamiento | Ortodoncia - Valoración de Ortodoncia | 8:30 | 30 | Dra. Sandra Simancas | 2026-02-13T21:16:25.359Z | 2026-02-13T21:16:25.359Z
 ```
 
 ### Reglas Importantes:
 
 - La fila 1 DEBE contener los headers exactamente como se muestra
-- Las citas canceladas se marcan con estado "cancelada" (NO se eliminan)
+- Las citas canceladas se marcan con estado "Cancelada" (NO se eliminan)
+- Las citas atendidas tienen estado "Atendida"
+- Las citas pendientes tienen estado "Agendada"
 - El sistema lee desde la fila 2 en adelante
+- El sistema filtra citas por teléfono (columna D)
+- El sistema NO muestra citas con estado "Cancelada" o "Atendida" en consultas
 
 ---
 
@@ -124,13 +132,17 @@ Este spreadsheet debe contener 3 hojas (sheets) con las siguientes estructuras:
 
 En el spreadsheet `1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw`:
 
-1. Crear hoja llamada exactamente "Citas"
+1. ✅ Hoja "Citas" - YA EXISTE (no modificar estructura)
 2. Crear hoja llamada exactamente "Conversaciones"
 3. Crear hoja llamada exactamente "Pacientes"
 
 ### 2. Agregar Headers
 
-En cada hoja, agregar los headers en la fila 1 exactamente como se muestra arriba.
+**IMPORTANTE:** La hoja "Citas" ya tiene su estructura. NO la modifiques.
+
+Solo necesitas agregar headers en:
+- Hoja "Conversaciones" (nueva)
+- Hoja "Pacientes" (nueva)
 
 ### 3. Permisos
 
