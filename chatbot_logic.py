@@ -412,7 +412,7 @@ class ChatbotLogic:
         
         # Obtener conversación para el resto del procesamiento
         conv = self.get_or_create_conversation(telefono)
-        print(f"DEBUG: estado actual = {conv.estado}")
+        print(f"DEBUG: estado actual = {conv['estado']}")
         
         # Si el usuario saluda, siempre mostrar el menú
         saludos = ["hola", "hi", "hello", "buenos dias", "buenas tardes", "buenas noches", "hey", "ola"]
@@ -420,41 +420,41 @@ class ChatbotLogic:
             return self.show_menu(telefono)
         
         # Estado inicial o menú
-        if conv.estado in [self.ESTADO_INICIAL, self.ESTADO_MENU]:
+        if conv['estado'] in [self.ESTADO_INICIAL, self.ESTADO_MENU]:
             return self.handle_menu(telefono, mensaje)
         
         # Flujo de agendar
-        elif conv.estado == self.ESTADO_AGENDAR_NOMBRE:
+        elif conv['estado'] == self.ESTADO_AGENDAR_NOMBRE:
             return self.handle_agendar_nombre(telefono, mensaje)
-        elif conv.estado == self.ESTADO_AGENDAR_SERVICIO:
+        elif conv['estado'] == self.ESTADO_AGENDAR_SERVICIO:
             return self.handle_agendar_servicio(telefono, mensaje)
-        elif conv.estado == self.ESTADO_AGENDAR_FECHA:
+        elif conv['estado'] == self.ESTADO_AGENDAR_FECHA:
             return self.handle_agendar_fecha(telefono, mensaje)
-        elif conv.estado == self.ESTADO_AGENDAR_HORA:
+        elif conv['estado'] == self.ESTADO_AGENDAR_HORA:
             return self.handle_agendar_hora(telefono, mensaje)
-        elif conv.estado == self.ESTADO_AGENDAR_CONFIRMAR:
+        elif conv['estado'] == self.ESTADO_AGENDAR_CONFIRMAR:
             return self.handle_agendar_confirmar(telefono, mensaje)
         
         # Flujo de reagendar
-        elif conv.estado == self.ESTADO_REAGENDAR_SELECCIONAR:
+        elif conv['estado'] == self.ESTADO_REAGENDAR_SELECCIONAR:
             return self.handle_reagendar_seleccionar(telefono, mensaje)
-        elif conv.estado == self.ESTADO_REAGENDAR_SERVICIO:
+        elif conv['estado'] == self.ESTADO_REAGENDAR_SERVICIO:
             return self.handle_reagendar_servicio(telefono, mensaje)
-        elif conv.estado == self.ESTADO_REAGENDAR_FECHA:
+        elif conv['estado'] == self.ESTADO_REAGENDAR_FECHA:
             return self.handle_reagendar_fecha(telefono, mensaje)
-        elif conv.estado == self.ESTADO_REAGENDAR_HORA:
+        elif conv['estado'] == self.ESTADO_REAGENDAR_HORA:
             return self.handle_reagendar_hora(telefono, mensaje)
-        elif conv.estado == self.ESTADO_REAGENDAR_CONFIRMAR:
+        elif conv['estado'] == self.ESTADO_REAGENDAR_CONFIRMAR:
             return self.handle_reagendar_confirmar(telefono, mensaje)
         
         # Flujo de cancelar
-        elif conv.estado == self.ESTADO_CANCELAR_SELECCIONAR:
+        elif conv['estado'] == self.ESTADO_CANCELAR_SELECCIONAR:
             return self.handle_cancelar_seleccionar(telefono, mensaje)
-        elif conv.estado == self.ESTADO_CANCELAR_CONFIRMAR:
+        elif conv['estado'] == self.ESTADO_CANCELAR_CONFIRMAR:
             return self.handle_cancelar_confirmar(telefono, mensaje)
         
         # Flujo de consultar
-        elif conv.estado == self.ESTADO_CONSULTAR:
+        elif conv['estado'] == self.ESTADO_CONSULTAR:
             return self.handle_consultar(telefono, mensaje)
         
         return self.show_menu(telefono)
@@ -860,7 +860,7 @@ Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 
         try:
             numero = int(mensaje)
             conv = self.get_or_create_conversation(telefono)
-            contexto = conv.contexto or {}
+            contexto = conv['contexto'] or {}
             servicios_map = contexto.get("servicios_map", {})
             
             # Convertir keys de string a int
@@ -895,7 +895,7 @@ Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 
             return "❌ Fecha inválida. Por favor verifica:\n\n• Usa formato DD/MM/AAAA\n• La fecha debe ser futura\n• Solo atendemos Lunes a Viernes\n\nIntenta nuevamente."
         
         conv = self.get_or_create_conversation(telefono)
-        contexto = conv.contexto or {}
+        contexto = conv['contexto'] or {}
         
         print(f"DEBUG: Contexto recibido en handle_agendar_fecha: {contexto}")
         
@@ -955,7 +955,7 @@ Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 
     def handle_agendar_hora(self, telefono: str, mensaje: str) -> str:
         """Maneja la hora en el flujo de agendar"""
         conv = self.get_or_create_conversation(telefono)
-        contexto = conv.contexto or {}
+        contexto = conv['contexto'] or {}
         
         # Validar que tenemos la fecha en el contexto
         if "fecha" not in contexto:
@@ -1015,7 +1015,7 @@ Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 
         """Maneja la confirmación en el flujo de agendar"""
         if "si" in mensaje or "sí" in mensaje or "confirmar" in mensaje:
             conv = self.get_or_create_conversation(telefono)
-            contexto = conv.contexto
+            contexto = conv['contexto']
             
             paciente = self.get_or_create_patient(telefono)
             fecha_hora = parser.parse(contexto["fecha_hora"])
@@ -1109,7 +1109,7 @@ Recuerda que atendemos de Lunes a Viernes, de 8:00 a 17:00 (excepto 12:00-13:00)
             
             # Guardar en contexto y pedir confirmación
             conv = self.get_or_create_conversation(telefono)
-            contexto = conv.contexto
+            contexto = conv['contexto']
             contexto["nueva_fecha"] = fecha_hora.strftime("%d/%m/%Y")
             contexto["nueva_hora"] = fecha_hora.strftime("%H:%M")
             
@@ -1196,7 +1196,7 @@ Ejemplo: 05/03/2026 14:30"""
         respuesta += "Responde con el número del servicio."
         
         conv = self.get_or_create_conversation(telefono)
-        contexto = conv.contexto
+        contexto = conv['contexto']
         contexto["servicios_map"] = servicios_map
         contexto["cambiar_servicio"] = True
         # Cambiar el estado a REAGENDAR_FECHA para que el siguiente mensaje lo procese correctamente
@@ -1207,7 +1207,7 @@ Ejemplo: 05/03/2026 14:30"""
     def handle_reagendar_fecha(self, telefono: str, mensaje: str) -> str:
         """Maneja la nueva fecha en el flujo de reagendar"""
         conv = self.get_or_create_conversation(telefono)
-        contexto = conv.contexto
+        contexto = conv['contexto']
         
         # Si está en modo de cambiar servicio, primero procesar la selección
         if contexto.get("cambiar_servicio"):
@@ -1293,7 +1293,7 @@ Ejemplo: 05/03/2026 14:30"""
     def handle_reagendar_hora(self, telefono: str, mensaje: str) -> str:
         """Maneja la nueva hora en el flujo de reagendar"""
         conv = self.get_or_create_conversation(telefono)
-        contexto = conv.contexto
+        contexto = conv['contexto']
         
         # Procesar selección de horario por número
         try:
@@ -1380,7 +1380,7 @@ NUEVA CITA:
         """Maneja la confirmación en el flujo de reagendar - USA GOOGLE SHEETS"""
         if "si" in mensaje or "sí" in mensaje or "confirmar" in mensaje:
             conv = self.get_or_create_conversation(telefono)
-            contexto = conv.contexto
+            contexto = conv['contexto']
             
             # Actualizar en Google Sheets
             sheets_client = get_sheets_client()
@@ -1446,7 +1446,7 @@ Te esperamos! 😊"""
         """Maneja la confirmación en el flujo de cancelar - USA GOOGLE SHEETS"""
         if "si" in mensaje or "sí" in mensaje or "confirmar" in mensaje:
             conv = self.get_or_create_conversation(telefono)
-            contexto = conv.contexto
+            contexto = conv['contexto']
             
             # Cancelar en Google Sheets (marca como cancelada, NO elimina)
             sheets_client = get_sheets_client()
