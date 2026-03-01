@@ -132,7 +132,7 @@ class ChatbotLogic:
     
     async def send_human_handoff_webhook(self, telefono: str, mensaje: str, nombre: str = None):
         """Envía notificación al webhook cuando se solicita atención humana"""
-        webhook_url = "https://n8n-n8n.dtbfmw.easypanel.host/webhook-test/bfaba3be-b713-49ff-812e-5a9cb27cf128"
+        webhook_url = "https://n8n-n8n.dtbfmw.easypanel.host/webhook/bfaba3be-b713-49ff-812e-5a9cb27cf128"
         
         # Obtener información del paciente desde Google Sheets
         paciente = self.sheets_client.get_patient(telefono)
