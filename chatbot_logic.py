@@ -29,7 +29,6 @@ class ChatbotLogic:
     # Reagendar
     ESTADO_REAGENDAR_CEDULA = "reagendar_cedula"
     ESTADO_REAGENDAR_SELECCIONAR = "reagendar_seleccionar"
-    ESTADO_REAGENDAR_SERVICIO = "reagendar_servicio"
     ESTADO_REAGENDAR_FECHA = "reagendar_fecha"
     ESTADO_REAGENDAR_HORA = "reagendar_hora"
     ESTADO_REAGENDAR_CONFIRMAR = "reagendar_confirmar"
@@ -443,8 +442,6 @@ class ChatbotLogic:
             return self.handle_reagendar_cedula(telefono, mensaje)
         elif conv['estado'] == self.ESTADO_REAGENDAR_SELECCIONAR:
             return self.handle_reagendar_seleccionar(telefono, mensaje)
-        elif conv['estado'] == self.ESTADO_REAGENDAR_SERVICIO:
-            return self.handle_reagendar_servicio(telefono, mensaje)
         elif conv['estado'] == self.ESTADO_REAGENDAR_FECHA:
             return self.handle_reagendar_fecha(telefono, mensaje)
         elif conv['estado'] == self.ESTADO_REAGENDAR_HORA:
@@ -1097,64 +1094,124 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
                 return "Número inválido. Por favor, elige un número de la lista."
             
             cita = citas[indice]
-            contexto["cita_id"] = cita['id']
-            self.update_conversation(telefono, self.ESTADO_REAGENDAR_SERVICIO, contexto)
             
-            return f"""Vas a reagendar esta cita:
+            # Obtener próximos 8 días laborales del calendario
+            dias_laborales = sheets_client.get_next_working_days(8)
+            
+            if not dias_laborales:
+                self.update_conversation(telefono, self.ESTADO_MENU, {})
+                return "❌ No hay fechas disponibles en este momento. Por favor, intenta más tarde.\n\nEscribe 'menu' para volver al inicio."
+            
+            # Guardar cita seleccionada y días disponibles en contexto
+            contexto["cita_id"] = cita['id']
+            contexto["dias_disponibles"] = {str(i+1): dia for i, dia in enumerate(dias_laborales)}
+            self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
+            
+            # Construir mensaje con catálogo de fechas
+            respuesta = f"""Vas a reagendar esta cita:
 
 {sheets_client.format_appointment(cita)}
 
-Por favor, indícame la nueva fecha y hora que deseas.
-Formato: DD/MM/AAAA HH:MM
-Ejemplo: 05/03/2026 14:30
+📅 Selecciona una nueva fecha (próximos días disponibles):
 
-Recuerda que atendemos de Lunes a Viernes, de 8:00 a 17:00 (excepto 12:00-13:00)."""
+"""
+            for i, dia in enumerate(dias_laborales, 1):
+                fecha_obj = dia['fecha_obj']
+                fecha_formato = fecha_obj.strftime('%d/%m/%Y')
+                dia_semana = dia['dia_semana']
+                respuesta += f"{i}. {dia_semana} {fecha_formato}\n"
+            
+            respuesta += "\nResponde con el número de la fecha que prefieres."
+            
+            return respuesta
         
         except ValueError:
             return "Por favor, responde con el número de la cita."
     
     
-    def handle_reagendar_servicio(self, telefono: str, mensaje: str) -> str:
-        """Maneja la nueva fecha/hora para reagendar - USA GOOGLE SHEETS"""
-        # Validar formato de fecha y hora
+    def handle_reagendar_fecha(self, telefono: str, mensaje: str) -> str:
+        """Maneja la selección de fecha para reagendar - USA GOOGLE SHEETS"""
         try:
-            # Intentar parsear la fecha y hora
-            fecha_hora = parser.parse(mensaje, dayfirst=True)
-            
-            # Validar que sea fecha futura
-            if fecha_hora < datetime.now():
-                return "❌ La fecha debe ser futura. Por favor, intenta nuevamente."
-            
-            # Validar día laboral
-            if fecha_hora.weekday() >= 5:
-                return "❌ Solo atendemos de Lunes a Viernes. Por favor, elige otro día."
-            
-            # Validar horario
-            if fecha_hora.hour < 8 or fecha_hora.hour >= 17:
-                return "❌ Nuestro horario es de 8:00 a 17:00. Por favor, elige otra hora."
-            
-            if fecha_hora.hour >= 12 and fecha_hora.hour < 13:
-                return "❌ Hora de almuerzo (12:00-13:00). Por favor, elige otra hora."
-            
-            # Guardar en contexto y pedir confirmación
+            numero_fecha = int(mensaje)
             conv = self.get_or_create_conversation(telefono)
-            contexto = conv['contexto']
-            contexto["nueva_fecha"] = fecha_hora.strftime("%d/%m/%Y")
-            contexto["nueva_hora"] = fecha_hora.strftime("%H:%M")
+            contexto = conv['contexto'] or {}
             
+            dias_disponibles = contexto.get("dias_disponibles", {})
+            
+            if str(numero_fecha) not in dias_disponibles:
+                return "Número inválido. Por favor, elige un número de la lista de fechas."
+            
+            # Obtener fecha seleccionada
+            dia_seleccionado = dias_disponibles[str(numero_fecha)]
+            fecha_str = dia_seleccionado['fecha']  # YYYY-MM-DD
+            fecha_obj = dia_seleccionado['fecha_obj']
+            dia_semana = dia_seleccionado['dia_semana']
+            
+            # Obtener horas disponibles para esa fecha
+            sheets_client = get_sheets_client()
+            horas_disponibles = sheets_client.get_available_hours_for_date(fecha_str)
+            
+            if not horas_disponibles:
+                return "❌ No hay horarios disponibles para esa fecha. Por favor, elige otra fecha."
+            
+            # Guardar fecha seleccionada y horas disponibles en contexto
+            contexto["fecha_seleccionada"] = fecha_str
+            contexto["fecha_formato"] = fecha_obj.strftime('%d/%m/%Y')
+            contexto["dia_semana"] = dia_semana
+            contexto["horas_disponibles"] = {str(i+1): hora for i, hora in enumerate(horas_disponibles)}
+            self.update_conversation(telefono, self.ESTADO_REAGENDAR_HORA, contexto)
+            
+            # Construir mensaje con catálogo de horas
+            respuesta = f"""Perfecto! Has seleccionado:
+📅 {dia_semana} {fecha_obj.strftime('%d/%m/%Y')}
+
+🕐 Ahora selecciona la hora:
+
+"""
+            # Mostrar horas en columnas para mejor visualización
+            for i, hora in enumerate(horas_disponibles, 1):
+                respuesta += f"{i}. {hora}   "
+                if i % 4 == 0:  # 4 horas por línea
+                    respuesta += "\n"
+            
+            respuesta += "\n\nResponde con el número de la hora que prefieres."
+            
+            return respuesta
+            
+        except ValueError:
+            return "Por favor, responde con el número de la fecha."
+    
+    def handle_reagendar_hora(self, telefono: str, mensaje: str) -> str:
+        """Maneja la selección de hora para reagendar - USA GOOGLE SHEETS"""
+        try:
+            numero_hora = int(mensaje)
+            conv = self.get_or_create_conversation(telefono)
+            contexto = conv['contexto'] or {}
+            
+            horas_disponibles = contexto.get("horas_disponibles", {})
+            
+            if str(numero_hora) not in horas_disponibles:
+                return "Número inválido. Por favor, elige un número de la lista de horas."
+            
+            # Obtener hora seleccionada
+            hora_seleccionada = horas_disponibles[str(numero_hora)]
+            fecha_formato = contexto.get("fecha_formato")
+            dia_semana = contexto.get("dia_semana")
+            
+            # Guardar en contexto para confirmación
+            contexto["nueva_fecha"] = fecha_formato
+            contexto["nueva_hora"] = hora_seleccionada
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_CONFIRMAR, contexto)
             
             return f"""Perfecto! Nueva fecha y hora:
 
-📅 {fecha_hora.strftime('%d/%m/%Y')} a las {fecha_hora.strftime('%H:%M')}
+📅 {dia_semana} {fecha_formato}
+🕐 {hora_seleccionada}
 
 ¿Confirmas el cambio? Responde SÍ o NO."""
             
-        except Exception as e:
-            return """❌ Formato inválido. Por favor usa:
-DD/MM/AAAA HH:MM
-
-Ejemplo: 05/03/2026 14:30"""
+        except ValueError:
+            return "Por favor, responde con el número de la hora."
     
     
     # ============================================================================
@@ -1233,177 +1290,21 @@ Ejemplo: 05/03/2026 14:30"""
         
         return respuesta
     
-    def handle_reagendar_fecha(self, telefono: str, mensaje: str) -> str:
-        """Maneja la nueva fecha en el flujo de reagendar"""
-        conv = self.get_or_create_conversation(telefono)
-        contexto = conv['contexto']
-        
-        # Si está en modo de cambiar servicio, primero procesar la selección
-        if contexto.get("cambiar_servicio"):
-            try:
-                numero = int(mensaje)
-                servicios_map = contexto.get("servicios_map", {})
-                servicios_map = {int(k): v for k, v in servicios_map.items()}
-                
-                if numero not in servicios_map:
-                    return "Número inválido. Por favor, elige un número de la lista."
-                
-                servicio_id = servicios_map[numero]
-                servicio = self.get_servicio_by_id(servicio_id)
-                
-                if not servicio:
-                    return "Servicio no encontrado. Por favor, intenta nuevamente."
-                
-                contexto["servicio_id"] = servicio_id
-                contexto["duracion_minutos"] = servicio.duracion_minutos
-                contexto["cambiar_servicio"] = False
-                self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
-                
-                return f"Excelente! Nuevo servicio: {servicio.nombre}\n\n¿Para qué fecha? (formato DD/MM/AAAA)\n\nRecuerda que atendemos de Lunes a Viernes."
-            
-            except ValueError:
-                return "Por favor, responde con el número del servicio."
-        
-        # Procesar fecha
-        valida, fecha = self.is_valid_date(mensaje)
-        
-        if not valida:
-            return "❌ Fecha inválida. Por favor verifica:\n\n• Usa formato DD/MM/AAAA\n• La fecha debe ser futura\n• Solo atendemos Lunes a Viernes\n\nIntenta nuevamente."
-        
-        duracion = contexto.get("duracion_minutos", 30)
-        slots = self.get_available_slots(fecha, duracion)
-        if not slots:
-            return f"😔 No hay horarios disponibles para el {fecha.strftime('%d/%m/%Y')}.\n\nPor favor, elige otra fecha."
-        
-        # Separar horarios en mañana y tarde
-        horarios_manana = []
-        horarios_tarde = []
-        
-        for slot in slots:
-            hora = int(slot.split(":")[0])
-            if hora < 12:
-                horarios_manana.append(slot)
-            else:
-                horarios_tarde.append(slot)
-        
-        # Crear mapa de horarios y respuesta
-        horarios_map = {}
-        contador = 1
-        respuesta = f"Para el {fecha.strftime('%d/%m/%Y')} tenemos:\n\n"
-        
-        if horarios_manana:
-            respuesta += "🌅 Mañana:\n"
-            for slot in horarios_manana:
-                respuesta += f"{contador}. {slot}\n"
-                horarios_map[contador] = slot
-                contador += 1
-            respuesta += "\n"
-        
-        if horarios_tarde:
-            respuesta += "🌆 Tarde:\n"
-            for slot in horarios_tarde:
-                respuesta += f"{contador}. {slot}\n"
-                horarios_map[contador] = slot
-                contador += 1
-        
-        respuesta += "\nResponde con el número del horario que prefieres."
-        
-        contexto["nueva_fecha"] = fecha.isoformat()
-        contexto["horarios_map"] = horarios_map
-        self.update_conversation(telefono, self.ESTADO_REAGENDAR_HORA, contexto)
-        
-        respuesta = f"Para el {fecha.strftime('%d/%m/%Y')} tenemos:\n\n"
-        for slot in slots:
-            respuesta += f"• {slot}\n"
-        respuesta += "\n¿A qué hora? (formato HH:MM)\n\n⏰ Horario: 8:00 - 17:00 (Almuerzo: 12:00 - 13:00)"
-        
-        return respuesta
+    # ============================================================================
+    # === FUNCIONES LEGACY DE REAGENDAR (DESACTIVADAS) ===
+    # Fecha: 28/02/2026
+    # Motivo: Reemplazadas por nuevo sistema con catálogo de fechas y horas
+    # ============================================================================
     
-    def handle_reagendar_hora(self, telefono: str, mensaje: str) -> str:
-        """Maneja la nueva hora en el flujo de reagendar"""
-        conv = self.get_or_create_conversation(telefono)
-        contexto = conv['contexto']
-        
-        # Procesar selección de horario por número
-        try:
-            numero = int(mensaje)
-            horarios_map = contexto.get("horarios_map", {})
-            horarios_map = {int(k): v for k, v in horarios_map.items()}
-            
-            if numero not in horarios_map:
-                return "Número inválido. Por favor, elige un número de la lista."
-            
-            hora_str = horarios_map[numero]
-            hora = parser.parse(hora_str).time()
-            
-        except (ValueError, KeyError):
-            return "Por favor, responde con el número del horario que deseas."
-        
-        fecha = parser.parse(contexto["nueva_fecha"])
-        fecha_hora = datetime.combine(fecha.date(), hora)
-        duracion = contexto.get("duracion_minutos", 30)
-        
-        disponible, doctor_id = self.is_slot_available(fecha_hora, duracion)
-        if not disponible:
-            slots = self.get_available_slots(fecha, duracion)
-            if not slots:
-                return "😔 Ese horario ya no está disponible y no quedan más espacios.\n\nPor favor, elige otra fecha."
-            
-            # Separar horarios en mañana y tarde
-            horarios_manana = []
-            horarios_tarde = []
-            
-            for slot in slots:
-                hora_num = int(slot.split(":")[0])
-                if hora_num < 12:
-                    horarios_manana.append(slot)
-                else:
-                    horarios_tarde.append(slot)
-            
-            # Crear nuevo mapa de horarios
-            horarios_map = {}
-            contador = 1
-            respuesta = "😔 Ese horario ya está ocupado. Disponibles:\n\n"
-            
-            if horarios_manana:
-                respuesta += "🌅 Mañana:\n"
-                for slot in horarios_manana:
-                    respuesta += f"{contador}. {slot}\n"
-                    horarios_map[contador] = slot
-                    contador += 1
-                respuesta += "\n"
-            
-            if horarios_tarde:
-                respuesta += "🌆 Tarde:\n"
-                for slot in horarios_tarde:
-                    respuesta += f"{contador}. {slot}\n"
-                    horarios_map[contador] = slot
-                    contador += 1
-            
-            respuesta += "\nResponde con el número del horario que prefieres."
-            contexto["horarios_map"] = horarios_map
-            self.update_conversation(telefono, self.ESTADO_REAGENDAR_HORA, contexto)
-            return respuesta
-        
-        contexto["nueva_fecha_hora"] = fecha_hora.isoformat()
-        contexto["nuevo_doctor_id"] = doctor_id
-        self.update_conversation(telefono, self.ESTADO_REAGENDAR_CONFIRMAR, contexto)
-        
-        cita_actual = self.db.query(Cita).filter(Cita.id == contexto["cita_id"]).first()
-        nuevo_servicio = self.get_servicio_by_id(contexto["servicio_id"])
-        nuevo_doctor = self.db.query(Doctor).filter(Doctor.id == doctor_id).first()
-        
-        return f"""Confirma el cambio:
-
-CITA ACTUAL:
-{self.format_appointment(cita_actual)}
-
-NUEVA CITA:
-📅 {fecha_hora.strftime('%d/%m/%Y')} a las {fecha_hora.strftime('%H:%M')}
-💼 {nuevo_servicio.nombre} ({nuevo_servicio.duracion_minutos} min)
-👨‍⚕️ {nuevo_doctor.nombre}
-
-¿Confirmas el cambio? Responde SÍ o NO."""
+    # def handle_reagendar_fecha_OLD(self, telefono: str, mensaje: str) -> str:
+    #     """LEGACY - Maneja la nueva fecha en el flujo de reagendar"""
+    #     # Código comentado - Ver versión nueva arriba
+    #     pass
+    
+    # def handle_reagendar_hora_OLD(self, telefono: str, mensaje: str) -> str:
+    #     """LEGACY - Maneja la nueva hora en el flujo de reagendar"""
+    #     # Código comentado - Ver versión nueva arriba
+    #     pass
     
     def handle_reagendar_confirmar(self, telefono: str, mensaje: str) -> str:
         """Maneja la confirmación en el flujo de reagendar - USA GOOGLE SHEETS"""

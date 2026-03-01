@@ -36,6 +36,7 @@ class GoogleSheetsClient:
             self.sheet_citas = settings.sheet_name  # "Citas"
             self.sheet_conversaciones = "Conversaciones"
             self.sheet_pacientes = "Pacientes"
+            self.sheet_calendario = "Calendario"
             
             print(f"✅ Google Sheets Client inicializado correctamente")
             print(f"   Spreadsheet ID: {self.spreadsheet_id}")
@@ -409,6 +410,110 @@ class GoogleSheetsClient:
         except HttpError as e:
             print(f"❌ Error creando/actualizando paciente: {str(e)}")
             return False
+    
+    # ============================================================================
+    # === GESTIÓN DE CALENDARIO ===
+    # ============================================================================
+    
+    def get_next_working_days(self, limit: int = 8) -> List[Dict]:
+        """
+        Obtiene los próximos días laborales desde el sheet Calendario
+        
+        Args:
+            limit: Número de días laborales a retornar (default: 8)
+            
+        Returns:
+            Lista de diccionarios con fecha, dia_semana, es_laborable
+        """
+        try:
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=self._get_range(self.sheet_calendario, 'A2:D')
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            if not values:
+                return []
+            
+            today = datetime.now().date()
+            working_days = []
+            
+            for row in values:
+                while len(row) < 4:
+                    row.append('')
+                
+                fecha_str = row[0]  # fecha
+                dia_semana = row[1]  # dia_semana
+                es_laborable = row[2]  # es_laborable
+                festivo = row[3]  # festivo
+                
+                # Parsear fecha
+                try:
+                    fecha = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+                except:
+                    continue
+                
+                # Solo fechas futuras
+                if fecha <= today:
+                    continue
+                
+                # Solo días laborables (es_laborable = TRUE)
+                if es_laborable.upper() == 'TRUE':
+                    working_days.append({
+                        'fecha': fecha_str,
+                        'fecha_obj': fecha,
+                        'dia_semana': dia_semana,
+                        'es_laborable': es_laborable,
+                        'festivo': festivo
+                    })
+                    
+                    if len(working_days) >= limit:
+                        break
+            
+            return working_days
+            
+        except HttpError as e:
+            print(f"❌ Error obteniendo días laborales: {str(e)}")
+            return []
+    
+    def get_available_hours_for_date(self, fecha_str: str) -> List[str]:
+        """
+        Obtiene las horas disponibles para una fecha específica
+        
+        Args:
+            fecha_str: Fecha en formato YYYY-MM-DD
+            
+        Returns:
+            Lista de horas disponibles en formato HH:MM
+        """
+        try:
+            # Parsear fecha
+            fecha = datetime.strptime(fecha_str, '%Y-%m-%d')
+            dia_semana = fecha.strftime('%A')  # Monday, Tuesday, etc.
+            
+            # Determinar horarios según día de la semana
+            if dia_semana == 'Saturday':
+                # Sábados: 8:00 - 12:00
+                horas = []
+                for hora in range(8, 12):
+                    horas.append(f"{hora:02d}:00")
+                    horas.append(f"{hora:02d}:30")
+            else:
+                # Lunes a Viernes: 8:00 - 17:00 (excepto 12:00-13:00)
+                horas = []
+                for hora in range(8, 17):
+                    # Saltar hora de almuerzo (12:00-13:00)
+                    if hora == 12:
+                        continue
+                    horas.append(f"{hora:02d}:00")
+                    horas.append(f"{hora:02d}:30")
+            
+            return horas
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo horas disponibles: {str(e)}")
+            return []
 
 
 # Instancia global del cliente
