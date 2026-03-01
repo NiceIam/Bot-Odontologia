@@ -77,11 +77,6 @@ async def webhook(request: Request):
         data = body.get("data", {})
         key = data.get("key", {})
         
-        # Ignorar mensajes enviados por nosotros
-        if key.get("fromMe", False):
-            logger.info("Mensaje propio ignorado")
-            return {"status": "ignored", "reason": "message from bot"}
-        
         # Extraer información del mensaje
         remote_jid = key.get("remoteJid", "")
         telefono = remote_jid.replace("@s.whatsapp.net", "")
@@ -101,6 +96,44 @@ async def webhook(request: Request):
         
         # Limpiar el mensaje
         mensaje = mensaje.strip()
+        
+        # Verificar si es un mensaje propio (fromMe)
+        is_from_me = key.get("fromMe", False)
+        
+        # Si es mensaje propio, solo procesar si es para reactivar el bot
+        if is_from_me:
+            logger.info(f"Mensaje propio detectado de {telefono}: {mensaje}")
+            
+            # Crear instancia del chatbot para verificar modo humano
+            chatbot = ChatbotLogic()
+            
+            # Verificar si hay modo humano activo
+            if chatbot.is_human_mode_active(telefono):
+                logger.info(f"Modo humano activo para {telefono}, verificando frase de reactivación")
+                
+                # Verificar si es una frase de reactivación
+                if chatbot.detect_bot_reactivation(mensaje):
+                    logger.info(f"Frase de reactivación detectada: '{mensaje}'")
+                    chatbot.deactivate_human_mode(telefono)
+                    
+                    # Enviar mensaje de confirmación
+                    await evolution_client.send_message(
+                        telefono,
+                        "Bot reactivado. Escribe 'hola' para ver el menú de opciones."
+                    )
+                    
+                    return {
+                        "status": "success",
+                        "phone": telefono,
+                        "action": "bot_reactivated_by_human",
+                        "message": mensaje
+                    }
+                else:
+                    logger.info(f"Mensaje propio sin frase de reactivación, ignorando")
+                    return {"status": "ignored", "reason": "message from human, no reactivation phrase"}
+            else:
+                logger.info("No hay modo humano activo, ignorando mensaje propio")
+                return {"status": "ignored", "reason": "message from bot, no human mode"}
         
         logger.info(f"Procesando mensaje de {telefono}: {mensaje}")
         
