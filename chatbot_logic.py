@@ -1167,27 +1167,66 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             if not horas_disponibles:
                 return "❌ No hay horarios disponibles para esa fecha. Por favor, elige otra fecha."
             
+            # Separar horas en mañana y tarde
+            horas_manana = []
+            horas_tarde = []
+            
+            for hora in horas_disponibles:
+                hora_num = int(hora.split(':')[0])
+                if hora_num < 12:
+                    horas_manana.append(hora)
+                else:
+                    horas_tarde.append(hora)
+            
+            # Crear mapa de horas con numeración continua
+            horas_map = {}
+            contador = 1
+            
+            for hora in horas_manana:
+                horas_map[str(contador)] = hora
+                contador += 1
+            
+            for hora in horas_tarde:
+                horas_map[str(contador)] = hora
+                contador += 1
+            
             # Guardar fecha seleccionada y horas disponibles en contexto
             contexto["fecha_seleccionada"] = fecha_str
             contexto["fecha_formato"] = fecha_obj.strftime('%d/%m/%Y')
             contexto["dia_semana"] = dia_semana
-            contexto["horas_disponibles"] = {str(i+1): hora for i, hora in enumerate(horas_disponibles)}
+            contexto["horas_disponibles"] = horas_map
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_HORA, contexto)
             
-            # Construir mensaje con catálogo de horas
+            # Construir mensaje con catálogo de horas separado por mañana/tarde
             respuesta = f"""Perfecto! Has seleccionado:
 📅 {dia_semana} {fecha_obj.strftime('%d/%m/%Y')}
 
 🕐 Ahora selecciona la hora:
 
 """
-            # Mostrar horas en columnas para mejor visualización
-            for i, hora in enumerate(horas_disponibles, 1):
-                respuesta += f"{i}. {hora}   "
-                if i % 4 == 0:  # 4 horas por línea
-                    respuesta += "\n"
             
-            respuesta += "\n\nResponde con el número de la hora que prefieres."
+            # Mostrar horas de la mañana
+            if horas_manana:
+                respuesta += "🌅 MAÑANA:\n"
+                contador = 1
+                for hora in horas_manana:
+                    respuesta += f"{contador}. {hora}   "
+                    if contador % 4 == 0:  # 4 horas por línea
+                        respuesta += "\n"
+                    contador += 1
+                respuesta += "\n\n"
+            
+            # Mostrar horas de la tarde
+            if horas_tarde:
+                respuesta += "🌆 TARDE:\n"
+                for hora in horas_tarde:
+                    respuesta += f"{contador}. {hora}   "
+                    if contador % 4 == 0:  # 4 horas por línea
+                        respuesta += "\n"
+                    contador += 1
+                respuesta += "\n"
+            
+            respuesta += "\nResponde con el número de la hora que prefieres."
             
             return respuesta
             
