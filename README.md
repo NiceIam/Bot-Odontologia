@@ -1,12 +1,26 @@
 # Chatbot Clínica Odontológica - WhatsApp
 
-Sistema completo de gestión de citas odontológicas vía WhatsApp usando FastAPI, PostgreSQL y Evolution API.
+Sistema completo de gestión de citas odontológicas vía WhatsApp usando FastAPI, PostgreSQL, Google Sheets y Evolution API.
+
+## ⚠️ IMPORTANTE - Migración Reciente (28/02/2026)
+
+El sistema ha sido migrado parcialmente:
+- **Agendamiento:** Ahora redirige a sistema externo
+- **Reagendamiento, Cancelación, Consulta:** Migrados a Google Sheets
+- **Código legacy:** Preservado y comentado para posible rollback
+
+📖 **Ver documentación completa de migración:**
+- `CAMBIOS_REALIZADOS.md` - Resumen ejecutivo
+- `MIGRATION_GUIDE.md` - Guía completa con instrucciones de rollback
+- `CHECKLIST_DEPLOYMENT.md` - Checklist de deployment
 
 ## 📋 Requisitos Previos
 
 - Python 3.8 o superior
-- PostgreSQL (ya desplegado)
+- PostgreSQL (para conversaciones y pacientes)
+- Google Sheets (para citas)
 - Evolution API (ya desplegado)
+- Cuenta de servicio de Google Cloud con acceso a Sheets API
 - pip (gestor de paquetes de Python)
 
 ## 🚀 Instalación
@@ -62,7 +76,15 @@ DEBUG=True
 # Clínica
 CLINIC_NAME=Clínica Dental Sonrisa
 CLINIC_PHONE=+1234567890
+
+# Google Sheets (NUEVO - Requerido)
+SPREADSHEET_ID=1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw
+SHEET_NAME=Citas
+CALENDAR_ID=primary
+GOOGLE_CREDENTIALS={"type":"service_account","project_id":"odontologica-n8n",...}
 ```
+
+**Nota:** Las credenciales de Google deben ser un JSON completo de service account.
 
 ### 5. Crear el schema en PostgreSQL
 
@@ -126,95 +148,55 @@ Asegúrate de que tu instancia de Evolution API esté conectada a WhatsApp y fun
 
 ## 📱 Flujos de Conversación
 
-### 1. Agendar Cita
+### 1. Agendar Cita (NUEVO FLUJO - Migrado 28/02/2026)
 
-**Usuario nuevo:**
-1. Bot: Solicita nombre completo
-2. Bot: Muestra catálogo de servicios (17 servicios en 9 categorías)
-3. Usuario: Selecciona servicio por número
-4. Bot: Solicita fecha (DD/MM/AAAA)
-5. Bot: Muestra horarios disponibles según duración del servicio
-6. Usuario: Selecciona hora
-7. Bot: Muestra resumen con doctor asignado automáticamente
-8. Bot: Solicita confirmación
-9. Bot: Confirma cita agendada con todos los detalles
+**Flujo actual:**
+1. Usuario: Selecciona opción 1 (Agendar)
+2. Bot: Envía enlace al sistema externo de agendamiento
+3. Usuario: Accede a https://n8n-orthodontofront.dtbfmw.easypanel.host/
+4. Usuario: Completa agendamiento en sistema externo
 
-**Usuario recurrente:**
-1. Bot: Muestra catálogo de servicios
-2. Usuario: Selecciona servicio
-3. Bot: Solicita fecha
-4. Bot: Muestra horarios disponibles
-5. Usuario: Selecciona hora
-6. Bot: Muestra resumen con doctor asignado
-7. Bot: Solicita confirmación
-8. Bot: Confirma cita agendada
+**Nota:** El flujo interno de agendamiento fue desactivado pero preservado en el código (comentado) para posible reactivación futura.
+
+### 2. Reagendar Cita (MIGRADO A GOOGLE SHEETS)
+
+### 2. Reagendar Cita (MIGRADO A GOOGLE SHEETS)
+
+1. Bot: Muestra lista de citas agendadas desde Google Sheets
+2. Usuario: Selecciona número de cita
+3. Bot: Solicita nueva fecha y hora (formato: DD/MM/AAAA HH:MM)
+4. Usuario: Ingresa nueva fecha/hora
+5. Bot: Muestra resumen del cambio
+6. Bot: Solicita confirmación
+7. Bot: Actualiza en Google Sheets y confirma
 
 **Validaciones:**
 - Fecha debe ser futura
 - Solo días laborales (Lunes a Viernes)
 - Horario: 8:00 - 17:00
 - Hora de almuerzo bloqueada: 12:00 - 13:00
-- Citas cada 30 minutos
-- Verifica disponibilidad de al menos 1 de los 3 doctores
-- Respeta duración del servicio (30 o 60 minutos)
-- No permite solapamiento de citas del mismo doctor
 
-**Casos edge:**
-- Horario no disponible: Muestra otros horarios disponibles
-- Sin horarios ese día: Solicita otra fecha
-- Fecha inválida: Explica formato correcto
-- Todos los doctores ocupados: Muestra siguiente horario disponible
-- Servicio de 60 min cerca del cierre: Solo muestra horarios válidos
-- Horario ocupado al confirmar: Notifica y vuelve al menú
+**Fuente de datos:** Google Sheets (NO PostgreSQL)
 
-### 2. Reagendar Cita
+### 3. Cancelar Cita (MIGRADO A GOOGLE SHEETS)
 
-1. Bot: Muestra lista de citas agendadas con doctor y servicio
-2. Usuario: Selecciona número de cita
-3. Bot: Pregunta si desea cambiar el servicio
-4. Usuario: Mantiene o cambia servicio
-5. Bot: Solicita nueva fecha
-6. Bot: Muestra horarios disponibles según duración
-7. Usuario: Selecciona hora
-8. Bot: Muestra comparación (cita actual vs nueva) con nuevo doctor
-9. Bot: Solicita confirmación
-10. Bot: Confirma reagendamiento
-
-**Validaciones:**
-- Mismas validaciones que agendar
-- Verifica que la cita exista
-- Verifica que sea cita futura
-- Asigna doctor disponible para nuevo horario
-
-**Casos edge:**
-- Sin citas para reagendar: Vuelve al menú
-- Número de cita inválido: Solicita número válido
-- Horario no disponible: Muestra alternativas
-- Cambio de servicio a uno más largo: Verifica disponibilidad
-
-### 3. Cancelar Cita
-
-1. Bot: Muestra lista de citas agendadas
+1. Bot: Muestra lista de citas agendadas desde Google Sheets
 2. Usuario: Selecciona número de cita
 3. Bot: Muestra cita completa y solicita confirmación
-4. Bot: Confirma cancelación
+4. Bot: Marca como "cancelada" en Google Sheets (NO elimina la fila)
 
-**Validaciones:**
-- Verifica que la cita exista
-- Solo citas futuras
+**Fuente de datos:** Google Sheets (NO PostgreSQL)
 
-**Casos edge:**
-- Sin citas para cancelar: Vuelve al menú
-- Número inválido: Solicita número válido
-- Usuario dice NO: Mantiene cita activa
+### 4. Consultar Citas (MIGRADO A GOOGLE SHEETS)
 
-### 4. Consultar Citas
-
-1. Bot: Muestra todas las citas agendadas del paciente con doctor y servicio
+1. Bot: Muestra todas las citas agendadas del paciente desde Google Sheets
 2. Bot: Vuelve al menú principal
 
-**Casos edge:**
-- Sin citas: Ofrece agendar una
+**Fuente de datos:** Google Sheets (NO PostgreSQL)
+
+### 5. Hablar con Profesional (SIN CAMBIOS)
+
+Funciona igual que antes - activa handoff a humano.
 
 ## 🧪 Testing
 
@@ -282,7 +264,9 @@ curl -X POST "http://localhost:8000/webhook" \
 
 ## 📊 Estructura de la Base de Datos
 
-### Tabla: pacientes
+### PostgreSQL (Conversaciones y Pacientes)
+
+#### Tabla: pacientes
 - `id`: ID único
 - `telefono`: Número de WhatsApp (único)
 - `nombre`: Nombre completo
@@ -290,82 +274,46 @@ curl -X POST "http://localhost:8000/webhook" \
 - `fecha_nacimiento`: Fecha de nacimiento (opcional)
 - `created_at`, `updated_at`: Timestamps
 
-### Tabla: doctores
-- `id`: ID único
-- `nombre`: Nombre del doctor
-- `especialidad`: Especialidad médica
-- `activo`: Estado (activo/inactivo)
-- `created_at`, `updated_at`: Timestamps
-
-**Doctores precargados:**
-1. Dr. Juan Pérez - Ortodoncia
-2. Dra. María González - Odontología General
-3. Dr. Carlos Rodríguez - Cirugía Maxilofacial
-
-### Tabla: servicios
-- `id`: ID único
-- `categoria`: Categoría del servicio
-- `nombre`: Nombre del servicio
-- `duracion_minutos`: Duración (30 o 60 minutos)
-- `descripcion`: Descripción (opcional)
-- `activo`: Estado (activo/inactivo)
-- `created_at`, `updated_at`: Timestamps
-
-**Catálogo de servicios precargado (17 servicios):**
-
-1. **Ortodoncia**
-   - Valoración de Ortodoncia (30 min)
-   - Control de Ortodoncia (30 min)
-   - Montaje de Brackets (60 min)
-
-2. **Ortopedia Maxilar**
-   - Valoración de Ortopedia (30 min)
-   - Procedimiento de Ortopedia (60 min)
-
-3. **Odontología General**
-   - Valoración General (30 min)
-   - Procedimiento General (60 min)
-
-4. **Odontología Estética**
-   - Valoración Estética (30 min)
-   - Procedimiento Estético (60 min)
-
-5. **Blanqueamiento**
-   - Blanqueamiento Dental (30 min)
-
-6. **Diseño de Sonrisa**
-   - Valoración de Diseño de Sonrisa (30 min)
-   - Diseño de Sonrisa (60 min)
-
-7. **Rehabilitación Oral**
-   - Valoración de Rehabilitación (30 min)
-   - Procedimiento de Rehabilitación (60 min)
-
-8. **Periodoncia**
-   - Valoración de Periodoncia (30 min)
-   - Procedimiento de Periodoncia (60 min)
-
-9. **Profilaxis**
-   - Profilaxis Dental (30 min)
-
-### Tabla: citas
-- `id`: ID único
-- `paciente_id`: Referencia a paciente
-- `doctor_id`: Referencia a doctor
-- `servicio_id`: Referencia a servicio
-- `fecha_hora`: Fecha y hora de la cita
-- `estado`: agendada, cancelada, completada, reagendada
-- `notas`: Notas adicionales
-- `created_at`, `updated_at`: Timestamps
-- **Constraint único:** (doctor_id, fecha_hora) - Un doctor no puede tener dos citas al mismo tiempo
-
-### Tabla: conversaciones
+#### Tabla: conversaciones
 - `id`: ID único
 - `telefono`: Número de WhatsApp (único)
 - `estado`: Estado actual de la conversación
 - `contexto`: Datos temporales en JSON
+- `modo_humano`: Indica si está en modo humano
+- `fecha_modo_humano`: Timestamp de activación de modo humano
 - `ultima_interaccion`: Timestamp de última interacción
 - `created_at`: Timestamp de creación
+
+**Nota:** Las tablas `doctores`, `servicios` y `citas` siguen existiendo en PostgreSQL pero ya NO se usan para operaciones de citas. Se mantienen para posible rollback.
+
+### Google Sheets (Citas - NUEVA FUENTE DE DATOS)
+
+**Spreadsheet ID:** `1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw`  
+**Sheet Name:** `Citas`
+
+#### Estructura de columnas:
+
+| Columna | Nombre | Descripción |
+|---------|--------|-------------|
+| A | id | ID único de la cita |
+| B | telefono | Número de teléfono del paciente |
+| C | nombre | Nombre del paciente |
+| D | servicio | Nombre del servicio |
+| E | fecha | Fecha de la cita (DD/MM/AAAA) |
+| F | hora | Hora de la cita (HH:MM) |
+| G | estado | Estado: agendada, cancelada |
+| H | notas | Notas adicionales (opcional) |
+
+**Ejemplo de datos:**
+```
+1 | 5551234567 | Juan Pérez | Limpieza | 05/03/2026 | 14:30 | agendada | 
+2 | 5559876543 | María López | Ortodoncia | 06/03/2026 | 10:00 | agendada |
+```
+
+**Importante:**
+- La fila 1 debe contener los headers
+- Las citas canceladas se marcan con estado "cancelada" (NO se eliminan)
+- El sistema lee y escribe directamente en este Sheet
 
 ## 🔍 Logs y Debugging
 
@@ -403,12 +351,26 @@ logging.basicConfig(level=logging.DEBUG)  # Para más detalle
 - Las conversaciones se reinician automáticamente después de cada flujo
 - **Horarios de atención:** Lunes a Viernes, 8:00 - 17:00
 - **Hora de almuerzo:** 12:00 - 13:00 (bloqueada para citas)
-- Las citas son cada 30 minutos
-- **3 doctores disponibles** que atienden simultáneamente
-- El sistema asigna automáticamente el doctor disponible
-- El sistema previene solapamiento de citas del mismo doctor
-- **17 servicios** en 9 categorías con duraciones de 30 o 60 minutos
-- Los servicios de 60 minutos requieren 2 slots consecutivos disponibles
+- **Agendamiento:** Redirige a sistema externo (https://n8n-orthodontofront.dtbfmw.easypanel.host/)
+- **Citas:** Almacenadas en Google Sheets (NO en PostgreSQL)
+- **Conversaciones y Pacientes:** Siguen en PostgreSQL
+- **Código legacy:** Preservado y comentado para posible rollback
+
+## 🔄 Migración y Rollback
+
+### Archivos de Documentación
+- `CAMBIOS_REALIZADOS.md` - Resumen ejecutivo de cambios
+- `MIGRATION_GUIDE.md` - Guía completa con instrucciones de rollback
+- `CHECKLIST_DEPLOYMENT.md` - Checklist de deployment
+
+### Código Legacy
+Todo el código anterior fue comentado (NO eliminado) en `chatbot_logic.py`:
+- Lógica de agendamiento interno (~líneas 700-1100)
+- Métodos de disponibilidad y servicios (~líneas 288-387)
+- Consultas PostgreSQL de citas (~líneas 387-420)
+
+### Reactivar Sistema Anterior
+Ver `MIGRATION_GUIDE.md` sección "Instrucciones de Rollback" para pasos detallados.
 
 ## 🔐 Seguridad
 

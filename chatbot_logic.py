@@ -6,6 +6,11 @@ from dateutil import parser
 import re
 import httpx
 
+# === MIGRACIÓN A GOOGLE SHEETS ===
+# Fecha: 28/02/2026
+# Nueva fuente de datos para citas
+from google_sheets_client import get_sheets_client
+
 class ChatbotLogic:
     # Estados de conversación
     ESTADO_INICIAL = "inicial"
@@ -184,7 +189,17 @@ class ChatbotLogic:
         conv = self.db.query(Conversacion).filter(Conversacion.telefono == telefono).first()
         if not conv:
             return False
-        return conv.modo_humano == "true"
+        
+        # Manejar tanto boolean como string
+        modo = conv.modo_humano
+        print(f"DEBUG is_human_mode_active: modo_humano={modo}, tipo={type(modo)}")
+        
+        if isinstance(modo, bool):
+            return modo
+        elif isinstance(modo, str):
+            return modo.lower() in ["true", "1", "yes"]
+        else:
+            return False
     
     def get_or_create_conversation(self, telefono: str) -> Conversacion:
         """Obtiene o crea una conversación"""
@@ -270,129 +285,153 @@ class ChatbotLogic:
         except:
             return False, None
     
-    def get_servicios_por_categoria(self) -> Dict[str, List[Servicio]]:
-        """Obtiene servicios agrupados por categoría"""
-        servicios = self.db.query(Servicio).filter(Servicio.activo == "true").order_by(Servicio.categoria, Servicio.nombre).all()
-        
-        categorias = {}
-        for servicio in servicios:
-            if servicio.categoria not in categorias:
-                categorias[servicio.categoria] = []
-            categorias[servicio.categoria].append(servicio)
-        
-        return categorias
     
-    def get_servicio_by_id(self, servicio_id: int) -> Optional[Servicio]:
-        """Obtiene un servicio por ID"""
-        return self.db.query(Servicio).filter(Servicio.id == servicio_id, Servicio.activo == "true").first()
+    # ============================================================================
+    # === MÉTODOS LEGACY DE DISPONIBILIDAD Y SERVICIOS (DESACTIVADOS) ===
+    # Fecha de congelación: 28/02/2026
+    # Motivo: Ya no se usa agendamiento interno, se redirige a sistema externo
+    # IMPORTANTE: NO ELIMINAR - Mantener para posible rollback
+    # ============================================================================
     
-    def is_slot_available(self, fecha_hora: datetime, duracion_minutos: int) -> Tuple[bool, Optional[int]]:
-        """
-        Verifica si hay al menos un doctor disponible para el horario
-        Retorna (disponible, doctor_id)
-        """
-        doctores = self.db.query(Doctor).filter(Doctor.activo == "true").all()
-        
-        for doctor in doctores:
-            # Verificar si el doctor tiene alguna cita que se solape
-            citas_doctor = self.db.query(Cita).filter(
-                Cita.doctor_id == doctor.id,
-                Cita.estado == "agendada",
-                Cita.fecha_hora < fecha_hora + timedelta(minutes=duracion_minutos),
-                Cita.fecha_hora >= fecha_hora - timedelta(hours=2)  # Buscar en ventana de 2 horas
-            ).all()
-            
-            # Verificar solapamiento
-            disponible = True
-            for cita in citas_doctor:
-                fin_cita_existente = cita.fecha_hora + timedelta(minutes=cita.servicio.duracion_minutos)
-                fin_nueva_cita = fecha_hora + timedelta(minutes=duracion_minutos)
-                
-                # Hay solapamiento si:
-                # - La nueva cita empieza antes de que termine la existente Y
-                # - La nueva cita termina después de que empiece la existente
-                if fecha_hora < fin_cita_existente and fin_nueva_cita > cita.fecha_hora:
-                    disponible = False
-                    break
-            
-            if disponible:
-                return True, doctor.id
-        
-        return False, None
+    # def get_servicios_por_categoria(self) -> Dict[str, List[Servicio]]:
+    #     """Obtiene servicios agrupados por categoría"""
+    #     servicios = self.db.query(Servicio).filter(Servicio.activo == "true").order_by(Servicio.categoria, Servicio.nombre).all()
+    #     
+    #     categorias = {}
+    #     for servicio in servicios:
+    #         if servicio.categoria not in categorias:
+    #             categorias[servicio.categoria] = []
+    #         categorias[servicio.categoria].append(servicio)
+    #     
+    #     return categorias
     
-    def get_available_dates(self, limit: int = 7) -> List[datetime]:
-        """Obtiene las próximas fechas disponibles (solo días laborales)"""
-        fechas = []
-        fecha_actual = datetime.now().date()
-        dias_revisados = 0
-        max_dias = 30  # Revisar hasta 30 días en el futuro
-        
-        while len(fechas) < limit and dias_revisados < max_dias:
-            fecha_actual += timedelta(days=1)
-            dias_revisados += 1
-            
-            # Solo días laborales (Lunes a Viernes)
-            if fecha_actual.weekday() < 5:
-                fechas.append(datetime.combine(fecha_actual, time(hour=8)))
-        
-        return fechas
+    # def get_servicio_by_id(self, servicio_id: int) -> Optional[Servicio]:
+    #     """Obtiene un servicio por ID"""
+    #     return self.db.query(Servicio).filter(Servicio.id == servicio_id, Servicio.activo == "true").first()
     
-    def get_available_slots(self, fecha: datetime, duracion_minutos: int, limit: int = 20) -> List[str]:
-        """Obtiene horarios disponibles para una fecha y duración específica"""
-        slots = []
-        hora_inicio = datetime.combine(fecha.date(), time(hour=self.HORA_INICIO))
-        hora_fin = datetime.combine(fecha.date(), time(hour=self.HORA_FIN))
-        
-        current = hora_inicio
-        while current < hora_fin and len(slots) < limit:
-            # Saltar hora de almuerzo
-            if current.hour >= self.HORA_ALMUERZO_INICIO and current.hour < self.HORA_ALMUERZO_FIN:
-                current += timedelta(minutes=30)
-                continue
-            
-            # Verificar que la cita no se extienda más allá del horario de cierre
-            fin_cita = current + timedelta(minutes=duracion_minutos)
-            if fin_cita.hour > self.HORA_FIN or (fin_cita.hour == self.HORA_FIN and fin_cita.minute > 0):
-                current += timedelta(minutes=30)
-                continue
-            
-            # Verificar que la cita no se solape con hora de almuerzo
-            if current.hour < self.HORA_ALMUERZO_INICIO and fin_cita.hour >= self.HORA_ALMUERZO_INICIO:
-                current += timedelta(minutes=30)
-                continue
-            
-            disponible, _ = self.is_slot_available(current, duracion_minutos)
-            if disponible:
-                slots.append(current.strftime("%H:%M"))
-            
-            current += timedelta(minutes=30)
-        
-        return slots
+    # def is_slot_available(self, fecha_hora: datetime, duracion_minutos: int) -> Tuple[bool, Optional[int]]:
+    #     """
+    #     Verifica si hay al menos un doctor disponible para el horario
+    #     Retorna (disponible, doctor_id)
+    #     """
+    #     doctores = self.db.query(Doctor).filter(Doctor.activo == "true").all()
+    #     
+    #     for doctor in doctores:
+    #         # Verificar si el doctor tiene alguna cita que se solape
+    #         citas_doctor = self.db.query(Cita).filter(
+    #             Cita.doctor_id == doctor.id,
+    #             Cita.estado == "agendada",
+    #             Cita.fecha_hora < fecha_hora + timedelta(minutes=duracion_minutos),
+    #             Cita.fecha_hora >= fecha_hora - timedelta(hours=2)  # Buscar en ventana de 2 horas
+    #         ).all()
+    #         
+    #         # Verificar solapamiento
+    #         disponible = True
+    #         for cita in citas_doctor:
+    #             fin_cita_existente = cita.fecha_hora + timedelta(minutes=cita.servicio.duracion_minutos)
+    #             fin_nueva_cita = fecha_hora + timedelta(minutes=duracion_minutos)
+    #             
+    #             # Hay solapamiento si:
+    #             # - La nueva cita empieza antes de que termine la existente Y
+    #             # - La nueva cita termina después de que empiece la existente
+    #             if fecha_hora < fin_cita_existente and fin_nueva_cita > cita.fecha_hora:
+    #                 disponible = False
+    #                 break
+    #         
+    #         if disponible:
+    #             return True, doctor.id
+    #     
+    #     return False, None
     
-    def get_patient_appointments(self, telefono: str, solo_futuras: bool = True) -> List[Cita]:
-        """Obtiene las citas de un paciente"""
-        paciente = self.db.query(Paciente).filter(Paciente.telefono == telefono).first()
-        if not paciente:
-            return []
-        
-        query = self.db.query(Cita).filter(
-            Cita.paciente_id == paciente.id,
-            Cita.estado == "agendada"
-        )
-        
-        if solo_futuras:
-            query = query.filter(Cita.fecha_hora >= datetime.now())
-        
-        return query.order_by(Cita.fecha_hora).all()
+    # def get_available_dates(self, limit: int = 7) -> List[datetime]:
+    #     """Obtiene las próximas fechas disponibles (solo días laborales)"""
+    #     fechas = []
+    #     fecha_actual = datetime.now().date()
+    #     dias_revisados = 0
+    #     max_dias = 30  # Revisar hasta 30 días en el futuro
+    #     
+    #     while len(fechas) < limit and dias_revisados < max_dias:
+    #         fecha_actual += timedelta(days=1)
+    #         dias_revisados += 1
+    #         
+    #         # Solo días laborales (Lunes a Viernes)
+    #         if fecha_actual.weekday() < 5:
+    #             fechas.append(datetime.combine(fecha_actual, time(hour=8)))
+    #     
+    #     return fechas
     
-    def format_appointment(self, cita: Cita) -> str:
-        """Formatea una cita para mostrar"""
-        doctor = self.db.query(Doctor).filter(Doctor.id == cita.doctor_id).first()
-        servicio = self.db.query(Servicio).filter(Servicio.id == cita.servicio_id).first()
-        
-        return f"""📅 {cita.fecha_hora.strftime('%d/%m/%Y')} a las {cita.fecha_hora.strftime('%H:%M')}
-👨‍⚕️ Doctor: {doctor.nombre if doctor else 'N/A'}
-💼 Servicio: {servicio.nombre if servicio else 'N/A'} ({servicio.duracion_minutos if servicio else 0} min)"""
+    # def get_available_slots(self, fecha: datetime, duracion_minutos: int, limit: int = 20) -> List[str]:
+    #     """Obtiene horarios disponibles para una fecha y duración específica"""
+    #     slots = []
+    #     hora_inicio = datetime.combine(fecha.date(), time(hour=self.HORA_INICIO))
+    #     hora_fin = datetime.combine(fecha.date(), time(hour=self.HORA_FIN))
+    #     
+    #     current = hora_inicio
+    #     while current < hora_fin and len(slots) < limit:
+    #         # Saltar hora de almuerzo
+    #         if current.hour >= self.HORA_ALMUERZO_INICIO and current.hour < self.HORA_ALMUERZO_FIN:
+    #             current += timedelta(minutes=30)
+    #             continue
+    #         
+    #         # Verificar que la cita no se extienda más allá del horario de cierre
+    #         fin_cita = current + timedelta(minutes=duracion_minutos)
+    #         if fin_cita.hour > self.HORA_FIN or (fin_cita.hour == self.HORA_FIN and fin_cita.minute > 0):
+    #             current += timedelta(minutes=30)
+    #             continue
+    #         
+    #         # Verificar que la cita no se solape con hora de almuerzo
+    #         if current.hour < self.HORA_ALMUERZO_INICIO and fin_cita.hour >= self.HORA_ALMUERZO_INICIO:
+    #             current += timedelta(minutes=30)
+    #             continue
+    #         
+    #         disponible, _ = self.is_slot_available(current, duracion_minutos)
+    #         if disponible:
+    #             slots.append(current.strftime("%H:%M"))
+    #         
+    #         current += timedelta(minutes=30)
+    #     
+    #     return slots
+    
+    # ============================================================================
+    # === FIN MÉTODOS LEGACY DE DISPONIBILIDAD Y SERVICIOS ===
+    # ============================================================================
+    
+    
+    # ============================================================================
+    # === MÉTODOS LEGACY DE POSTGRESQL (DESACTIVADOS) ===
+    # Fecha de congelación: 28/02/2026
+    # Motivo: Migración a Google Sheets como fuente de datos
+    # IMPORTANTE: NO ELIMINAR - Mantener para posible rollback
+    # ============================================================================
+    
+    # def get_patient_appointments(self, telefono: str, solo_futuras: bool = True) -> List[Cita]:
+    #     """Obtiene las citas de un paciente desde PostgreSQL"""
+    #     paciente = self.db.query(Paciente).filter(Paciente.telefono == telefono).first()
+    #     if not paciente:
+    #         return []
+    #     
+    #     query = self.db.query(Cita).filter(
+    #         Cita.paciente_id == paciente.id,
+    #         Cita.estado == "agendada"
+    #     )
+    #     
+    #     if solo_futuras:
+    #         query = query.filter(Cita.fecha_hora >= datetime.now())
+    #     
+    #     return query.order_by(Cita.fecha_hora).all()
+    
+    # def format_appointment(self, cita: Cita) -> str:
+    #     """Formatea una cita para mostrar (versión PostgreSQL)"""
+    #     doctor = self.db.query(Doctor).filter(Doctor.id == cita.doctor_id).first()
+    #     servicio = self.db.query(Servicio).filter(Servicio.id == cita.servicio_id).first()
+    #     
+    #     return f"""📅 {cita.fecha_hora.strftime('%d/%m/%Y')} a las {cita.fecha_hora.strftime('%H:%M')}
+    # 👨‍⚕️ Doctor: {doctor.nombre if doctor else 'N/A'}
+    # 💼 Servicio: {servicio.nombre if servicio else 'N/A'} ({servicio.duracion_minutos if servicio else 0} min)"""
+    
+    # ============================================================================
+    # === FIN MÉTODOS LEGACY DE POSTGRESQL ===
+    # ============================================================================
     
     def process_message(self, telefono: str, mensaje: str) -> str:
         """Procesa un mensaje y retorna la respuesta"""
@@ -491,34 +530,43 @@ Por favor, responde con el número de la opción que deseas."""
     def handle_menu(self, telefono: str, mensaje: str) -> str:
         """Maneja la selección del menú"""
         if "1" in mensaje or "agendar" in mensaje:
-            paciente = self.db.query(Paciente).filter(Paciente.telefono == telefono).first()
-            if paciente and paciente.nombre:
-                return self.show_servicios(telefono)
-            else:
-                self.update_conversation(telefono, self.ESTADO_AGENDAR_NOMBRE, {})
-                return "Perfecto, vamos a agendar tu cita. 📅\n\nPrimero, ¿cuál es tu nombre completo?"
+            # === NUEVO FLUJO DE AGENDAMIENTO ===
+            # Fecha: 28/02/2026
+            # Ahora redirigimos a sistema externo en lugar de usar lógica interna
+            self.update_conversation(telefono, self.ESTADO_MENU, {})
+            return """Para agendar tu cita, por favor usa nuestro sistema de agendamiento en línea 👇
+
+🔗 https://n8n-orthodontofront.dtbfmw.easypanel.host/
+
+Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 😊"""
         
         elif "2" in mensaje or "reagendar" in mensaje:
-            citas = self.get_patient_appointments(telefono)
+            # Usar Google Sheets en lugar de PostgreSQL
+            sheets_client = get_sheets_client()
+            citas = sheets_client.get_appointments_by_phone(telefono)
+            
             if not citas:
                 return "No tienes citas agendadas para reagendar. 😔\n\n" + self.show_menu(telefono)
             
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_SELECCIONAR, {})
             respuesta = "Estas son tus citas agendadas:\n\n"
             for i, cita in enumerate(citas, 1):
-                respuesta += f"{i}. {self.format_appointment(cita)}\n\n"
+                respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
             respuesta += "¿Cuál cita deseas reagendar? Responde con el número."
             return respuesta
         
         elif "3" in mensaje or "cancelar" in mensaje:
-            citas = self.get_patient_appointments(telefono)
+            # Usar Google Sheets en lugar de PostgreSQL
+            sheets_client = get_sheets_client()
+            citas = sheets_client.get_appointments_by_phone(telefono)
+            
             if not citas:
                 return "No tienes citas agendadas para cancelar. 😔\n\n" + self.show_menu(telefono)
             
             self.update_conversation(telefono, self.ESTADO_CANCELAR_SELECCIONAR, {})
             respuesta = "Estas son tus citas agendadas:\n\n"
             for i, cita in enumerate(citas, 1):
-                respuesta += f"{i}. {self.format_appointment(cita)}\n\n"
+                respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
             respuesta += "¿Cuál cita deseas cancelar? Responde con el número."
             return respuesta
         
@@ -531,6 +579,277 @@ Por favor, responde con el número de la opción que deseas."""
         
         else:
             return "No entendí tu respuesta. Por favor, elige una opción del 1 al 5."
+    
+    
+    # ============================================================================
+    # === LÓGICA DE AGENDAMIENTO DESACTIVADA ===
+    # Fecha de congelación: 28/02/2026
+    # Motivo: Migración a sistema de agendamiento externo
+    # URL del nuevo sistema: https://n8n-orthodontofront.dtbfmw.easypanel.host/
+    # 
+    # IMPORTANTE: NO ELIMINAR ESTE CÓDIGO
+    # Esta lógica fue desactivada pero se mantiene para posible reactivación futura
+    # Si se necesita volver al flujo interno, descomentar estos métodos y
+    # restaurar la lógica en handle_menu()
+    # ============================================================================
+    
+    # def show_servicios(self, telefono: str) -> str:
+    #     """Muestra el catálogo de servicios"""
+    #     categorias = self.get_servicios_por_categoria()
+    #     
+    #     # Crear lista simplificada
+    #     respuesta = "Servicios disponibles:\n\n"
+    #     
+    #     contador = 1
+    #     servicios_map = {}
+    #     
+    #     # Mostrar solo los primeros servicios de cada categoría de forma compacta
+    #     for categoria, servicios in categorias.items():
+    #         for servicio in servicios:
+    #             respuesta += f"{contador}. {servicio.nombre}\n"
+    #             servicios_map[contador] = servicio.id
+    #             contador += 1
+    #     
+    #     respuesta += "\nEscribe el número"
+    #     
+    #     self.update_conversation(telefono, self.ESTADO_AGENDAR_SERVICIO, {"servicios_map": servicios_map})
+    #     return respuesta
+    
+    # === FLUJO AGENDAR (DESACTIVADO) ===
+    # def handle_agendar_nombre(self, telefono: str, mensaje: str) -> str:
+    #     """Maneja el nombre en el flujo de agendar"""
+    #     if len(mensaje) < 3:
+    #         return "Por favor, ingresa tu nombre completo (mínimo 3 caracteres)."
+    #     
+    #     # Guardar nombre
+    #     self.get_or_create_patient(telefono, mensaje.title())
+    #     
+    #     # Preparar servicios_map
+    #     categorias = self.get_servicios_por_categoria()
+    #     servicios_map = {}
+    #     contador = 1
+    #     
+    #     # Construir mensaje compacto con solo los primeros 10 servicios
+    #     respuesta = "Servicios (1-10):\n\n"
+    #     
+    #     for categoria, servicios in categorias.items():
+    #         for servicio in servicios:
+    #             if contador <= 10:
+    #                 respuesta += f"{contador}. {servicio.nombre}\n"
+    #             servicios_map[contador] = servicio.id
+    #             contador += 1
+    #     
+    #     respuesta += f"\n(Hay {contador-1} servicios en total)\nEscribe el número"
+    #     
+    #     # Actualizar estado
+    #     self.update_conversation(telefono, self.ESTADO_AGENDAR_SERVICIO, {"servicios_map": servicios_map})
+    #     
+    #     return respuesta
+    
+    # def handle_agendar_servicio(self, telefono: str, mensaje: str) -> str:
+    #     """Maneja la selección de servicio en el flujo de agendar"""
+    #     try:
+    #         numero = int(mensaje)
+    #         conv = self.get_or_create_conversation(telefono)
+    #         contexto = conv.contexto or {}
+    #         servicios_map = contexto.get("servicios_map", {})
+    #         
+    #         # Convertir keys de string a int
+    #         servicios_map = {int(k): v for k, v in servicios_map.items()}
+    #         
+    #         if numero not in servicios_map:
+    #             return "Número inválido. Por favor, elige un número de la lista."
+    #         
+    #         servicio_id = servicios_map[numero]
+    #         servicio = self.get_servicio_by_id(servicio_id)
+    #         
+    #         if not servicio:
+    #             return "Servicio no encontrado. Por favor, intenta nuevamente."
+    #         
+    #         # Mantener servicios_map en el contexto
+    #         contexto["servicio_id"] = servicio_id
+    #         contexto["duracion_minutos"] = servicio.duracion_minutos
+    #         
+    #         print(f"DEBUG: Guardando contexto: {contexto}")
+    #         self.update_conversation(telefono, self.ESTADO_AGENDAR_FECHA, contexto)
+    #         
+    #         return f"Excelente! Has seleccionado: {servicio.nombre} ({servicio.duracion_minutos} min)\n\n¿Qué día te gustaría venir? Por favor indica la fecha en formato DD/MM/AAAA (ejemplo: 25/02/2026).\n\nRecuerda que atendemos de Lunes a Viernes."
+    #     
+    #     except ValueError:
+    #         return "Por favor, responde con el número del servicio."
+    
+    # def handle_agendar_fecha(self, telefono: str, mensaje: str) -> str:
+    #     """Maneja la fecha en el flujo de agendar"""
+    #     valida, fecha = self.is_valid_date(mensaje)
+    #     
+    #     if not valida:
+    #         return "❌ Fecha inválida. Por favor verifica:\n\n• Usa formato DD/MM/AAAA\n• La fecha debe ser futura\n• Solo atendemos Lunes a Viernes\n\nIntenta nuevamente."
+    #     
+    #     conv = self.get_or_create_conversation(telefono)
+    #     contexto = conv.contexto or {}
+    #     
+    #     print(f"DEBUG: Contexto recibido en handle_agendar_fecha: {contexto}")
+    #     
+    #     # Asegurar que tenemos servicio_id y duracion
+    #     if "servicio_id" not in contexto:
+    #         print(f"ERROR: No hay servicio_id en contexto. Contexto completo: {contexto}")
+    #         self.update_conversation(telefono, self.ESTADO_MENU, {})
+    #         return "❌ Hubo un error. Por favor, comienza de nuevo.\n\n" + self.show_menu(telefono)
+    #     
+    #     duracion = contexto.get("duracion_minutos", 30)
+    #     
+    #     # Verificar horarios disponibles
+    #     slots = self.get_available_slots(fecha, duracion)
+    #     if not slots:
+    #         return f"😔 Lo siento, no hay horarios disponibles para el {fecha.strftime('%d/%m/%Y')}.\n\nPor favor, elige otra fecha."
+    #     
+    #     # Separar horarios en mañana y tarde
+    #     horarios_manana = []
+    #     horarios_tarde = []
+    #     
+    #     for slot in slots:
+    #         hora = int(slot.split(":")[0])
+    #         if hora < 12:
+    #             horarios_manana.append(slot)
+    #         else:
+    #             horarios_tarde.append(slot)
+    #     
+    #     # Crear mapa de horarios y respuesta
+    #     horarios_map = {}
+    #     contador = 1
+    #     respuesta = f"Perfecto! Para el {fecha.strftime('%d/%m/%Y')} tenemos disponibles:\n\n"
+    #     
+    #     if horarios_manana:
+    #         respuesta += "🌅 Mañana:\n"
+    #         for slot in horarios_manana:
+    #             respuesta += f"{contador}. {slot}\n"
+    #             horarios_map[contador] = slot
+    #             contador += 1
+    #         respuesta += "\n"
+    #     
+    #     if horarios_tarde:
+    #         respuesta += "🌆 Tarde:\n"
+    #         for slot in horarios_tarde:
+    #             respuesta += f"{contador}. {slot}\n"
+    #             horarios_map[contador] = slot
+    #             contador += 1
+    #     
+    #     respuesta += "\nResponde con el número del horario que prefieres."
+    #     
+    #     contexto["fecha"] = fecha.isoformat()
+    #     contexto["horarios_map"] = horarios_map
+    #     print(f"DEBUG: Guardando contexto con fecha: {contexto}")
+    #     self.update_conversation(telefono, self.ESTADO_AGENDAR_HORA, contexto)
+    #     
+    #     return respuesta
+    
+    # def handle_agendar_hora(self, telefono: str, mensaje: str) -> str:
+    #     """Maneja la hora en el flujo de agendar"""
+    #     conv = self.get_or_create_conversation(telefono)
+    #     contexto = conv.contexto or {}
+    #     
+    #     # Validar que tenemos la fecha en el contexto
+    #     if "fecha" not in contexto:
+    #         self.update_conversation(telefono, self.ESTADO_MENU, {})
+    #         return "❌ Hubo un error. Por favor, comienza de nuevo.\n\n" + self.show_menu(telefono)
+    #     
+    #     # Procesar selección de horario por número
+    #     try:
+    #         numero = int(mensaje)
+    #         horarios_map = contexto.get("horarios_map", {})
+    #         horarios_map = {int(k): v for k, v in horarios_map.items()}
+    #         
+    #         if numero not in horarios_map:
+    #             return "Número inválido. Por favor, elige un número de la lista."
+    #         
+    #         hora_str = horarios_map[numero]
+    #         hora = parser.parse(hora_str).time()
+    #         
+    #     except (ValueError, KeyError):
+    #         return "Por favor, responde con el número del horario que deseas."
+    #     
+    #     fecha = parser.parse(contexto["fecha"])
+    #     fecha_hora = datetime.combine(fecha.date(), hora)
+    #     duracion = contexto.get("duracion_minutos", 30)
+    #     
+    #     # Verificar disponibilidad
+    #     disponible, doctor_id = self.is_slot_available(fecha_hora, duracion)
+    #     if not disponible:
+    #         slots = self.get_available_slots(fecha, duracion)
+    #         if not slots:
+    #             return "😔 Ese horario ya no está disponible y no quedan más espacios ese día.\n\nPor favor, elige otra fecha."
+    #         
+    #         respuesta = "😔 Ese horario ya está ocupado. Horarios disponibles:\n\n"
+    #         for slot in slots:
+    #             respuesta += f"• {slot}\n"
+    #         respuesta += "\n¿Cuál prefieres?"
+    #         return respuesta
+    #     
+    #     contexto["hora"] = hora.isoformat()
+    #     contexto["fecha_hora"] = fecha_hora.isoformat()
+    #     contexto["doctor_id"] = doctor_id
+    #     self.update_conversation(telefono, self.ESTADO_AGENDAR_CONFIRMAR, contexto)
+    #     
+    #     servicio = self.get_servicio_by_id(contexto["servicio_id"])
+    #     doctor = self.db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    #     
+    #     return f"""Perfecto! Por favor confirma los datos de tu cita:
+    # 
+    # 📅 Fecha: {fecha_hora.strftime('%d/%m/%Y')}
+    # 🕐 Hora: {fecha_hora.strftime('%H:%M')}
+    # 💼 Servicio: {servicio.nombre} ({servicio.duracion_minutos} min)
+    # 👨‍⚕️ Doctor: {doctor.nombre}
+    # 
+    # ¿Es correcto? Responde SÍ para confirmar o NO para cancelar."""
+    
+    # def handle_agendar_confirmar(self, telefono: str, mensaje: str) -> str:
+    #     """Maneja la confirmación en el flujo de agendar"""
+    #     if "si" in mensaje or "sí" in mensaje or "confirmar" in mensaje:
+    #         conv = self.get_or_create_conversation(telefono)
+    #         contexto = conv.contexto
+    #         
+    #         paciente = self.get_or_create_patient(telefono)
+    #         fecha_hora = parser.parse(contexto["fecha_hora"])
+    #         duracion = contexto.get("duracion_minutos", 30)
+    #         
+    #         # Verificar disponibilidad nuevamente
+    #         disponible, doctor_id = self.is_slot_available(fecha_hora, duracion)
+    #         if not disponible:
+    #             self.update_conversation(telefono, self.ESTADO_MENU, {})
+    #             return "😔 Lo siento, ese horario acaba de ser ocupado.\n\n" + self.show_menu(telefono)
+    #         
+    #         # Crear cita
+    #         cita = Cita(
+    #             paciente_id=paciente.id,
+    #             doctor_id=doctor_id,
+    #             servicio_id=contexto["servicio_id"],
+    #             fecha_hora=fecha_hora,
+    #             estado="agendada"
+    #         )
+    #         self.db.add(cita)
+    #         self.db.commit()
+    #         self.db.refresh(cita)
+    #         
+    #         self.update_conversation(telefono, self.ESTADO_MENU, {})
+    #         
+    #         servicio = self.get_servicio_by_id(contexto["servicio_id"])
+    #         doctor = self.db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    #         
+    #         return f"""✅ ¡Cita agendada exitosamente!
+    # 
+    # 📅 {fecha_hora.strftime('%d/%m/%Y')} a las {fecha_hora.strftime('%H:%M')}
+    # 💼 {servicio.nombre} ({servicio.duracion_minutos} min)
+    # 👨‍⚕️ {doctor.nombre}
+    # 
+    # Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
+    #     
+    #     else:
+    #         self.update_conversation(telefono, self.ESTADO_MENU, {})
+    #         return "Cita cancelada. No hay problema! 😊"
+    
+    # ============================================================================
+    # === FIN DE LÓGICA DE AGENDAMIENTO DESACTIVADA ===
+    # ============================================================================
     
     def show_servicios(self, telefono: str) -> str:
         """Muestra el catálogo de servicios"""
@@ -786,47 +1105,127 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             return "Cita cancelada. No hay problema! 😊"
     
-    # === FLUJO REAGENDAR ===
+    # === FLUJO REAGENDAR (MIGRADO A GOOGLE SHEETS) ===
     def handle_reagendar_seleccionar(self, telefono: str, mensaje: str) -> str:
-        """Maneja la selección de cita para reagendar"""
+        """Maneja la selección de cita para reagendar - USA GOOGLE SHEETS"""
         try:
             indice = int(mensaje) - 1
-            citas = self.get_patient_appointments(telefono)
+            sheets_client = get_sheets_client()
+            citas = sheets_client.get_appointments_by_phone(telefono)
             
             if indice < 0 or indice >= len(citas):
                 return "Número inválido. Por favor, elige un número de la lista."
             
             cita = citas[indice]
-            contexto = {"cita_id": cita.id}
+            contexto = {"cita_id": cita['id'], "citas_list": citas}
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_SERVICIO, contexto)
             
-            return f"Vas a reagendar esta cita:\n\n{self.format_appointment(cita)}\n\n¿Deseas cambiar el servicio?\n\n1. Mantener el mismo servicio\n2. Cambiar servicio\n\nResponde 1 o 2."
+            return f"""Vas a reagendar esta cita:
+
+{sheets_client.format_appointment(cita)}
+
+Por favor, indícame la nueva fecha y hora que deseas.
+Formato: DD/MM/AAAA HH:MM
+Ejemplo: 05/03/2026 14:30
+
+Recuerda que atendemos de Lunes a Viernes, de 8:00 a 17:00 (excepto 12:00-13:00)."""
         
         except ValueError:
             return "Por favor, responde con el número de la cita."
     
-    def handle_reagendar_servicio(self, telefono: str, mensaje: str) -> str:
-        """Maneja si se cambia el servicio al reagendar"""
-        conv = self.get_or_create_conversation(telefono)
-        contexto = conv.contexto
-        cita = self.db.query(Cita).filter(Cita.id == contexto["cita_id"]).first()
-        
-        if "1" in mensaje or "mantener" in mensaje or "mismo" in mensaje:
-            # Mantener el mismo servicio
-            contexto["servicio_id"] = cita.servicio_id
-            contexto["duracion_minutos"] = cita.servicio.duracion_minutos
-            self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
-            
-            return f"Perfecto, mantendremos el servicio: {cita.servicio.nombre}\n\n¿Para qué nueva fecha? (formato DD/MM/AAAA)\n\nRecuerda que atendemos de Lunes a Viernes."
-        
-        elif "2" in mensaje or "cambiar" in mensaje:
-            # Cambiar servicio
-            return self.show_servicios_reagendar(telefono)
-        
-        else:
-            return "Por favor, responde 1 para mantener el servicio o 2 para cambiarlo."
     
-    def show_servicios_reagendar(self, telefono: str) -> str:
+    def handle_reagendar_servicio(self, telefono: str, mensaje: str) -> str:
+        """Maneja la nueva fecha/hora para reagendar - USA GOOGLE SHEETS"""
+        # Validar formato de fecha y hora
+        try:
+            # Intentar parsear la fecha y hora
+            fecha_hora = parser.parse(mensaje, dayfirst=True)
+            
+            # Validar que sea fecha futura
+            if fecha_hora < datetime.now():
+                return "❌ La fecha debe ser futura. Por favor, intenta nuevamente."
+            
+            # Validar día laboral
+            if fecha_hora.weekday() >= 5:
+                return "❌ Solo atendemos de Lunes a Viernes. Por favor, elige otro día."
+            
+            # Validar horario
+            if fecha_hora.hour < 8 or fecha_hora.hour >= 17:
+                return "❌ Nuestro horario es de 8:00 a 17:00. Por favor, elige otra hora."
+            
+            if fecha_hora.hour >= 12 and fecha_hora.hour < 13:
+                return "❌ Hora de almuerzo (12:00-13:00). Por favor, elige otra hora."
+            
+            # Guardar en contexto y pedir confirmación
+            conv = self.get_or_create_conversation(telefono)
+            contexto = conv.contexto
+            contexto["nueva_fecha"] = fecha_hora.strftime("%d/%m/%Y")
+            contexto["nueva_hora"] = fecha_hora.strftime("%H:%M")
+            
+            self.update_conversation(telefono, self.ESTADO_REAGENDAR_CONFIRMAR, contexto)
+            
+            return f"""Perfecto! Nueva fecha y hora:
+
+📅 {fecha_hora.strftime('%d/%m/%Y')} a las {fecha_hora.strftime('%H:%M')}
+
+¿Confirmas el cambio? Responde SÍ o NO."""
+            
+        except Exception as e:
+            return """❌ Formato inválido. Por favor usa:
+DD/MM/AAAA HH:MM
+
+Ejemplo: 05/03/2026 14:30"""
+    
+    
+    # ============================================================================
+    # === MÉTODOS LEGACY DE REAGENDAMIENTO (DESACTIVADOS) ===
+    # Fecha de congelación: 28/02/2026
+    # Motivo: Migración a Google Sheets como fuente de datos
+    # IMPORTANTE: NO ELIMINAR - Mantener para posible rollback
+    # ============================================================================
+    
+    # def show_servicios_reagendar(self, telefono: str) -> str:
+    #     """Muestra servicios para reagendar"""
+    #     categorias = self.get_servicios_por_categoria()
+    #     
+    #     respuesta = "Selecciona el nuevo servicio:\n\n"
+    #     
+    #     contador = 1
+    #     servicios_map = {}
+    #     
+    #     for categoria, servicios in categorias.items():
+    #         respuesta += f"📋 {categoria}:\n"
+    #         for servicio in servicios:
+    #             respuesta += f"{contador}. {servicio.nombre} ({servicio.duracion_minutos} min)\n"
+    #             servicios_map[contador] = servicio.id
+    #             contador += 1
+    #         respuesta += "\n"
+    #     
+    #     respuesta += "Responde con el número del servicio."
+    #     
+    #     conv = self.get_or_create_conversation(telefono)
+    #     contexto = conv.contexto
+    #     contexto["servicios_map"] = servicios_map
+    #     contexto["cambiar_servicio"] = True
+    #     self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
+    #     
+    #     return respuesta
+    
+    # def handle_reagendar_fecha(self, telefono: str, mensaje: str) -> str:
+    #     """Maneja la nueva fecha en el flujo de reagendar"""
+    #     # ... código legacy comentado ...
+    #     pass
+    
+    # def handle_reagendar_hora(self, telefono: str, mensaje: str) -> str:
+    #     """Maneja la nueva hora en el flujo de reagendar"""
+    #     # ... código legacy comentado ...
+    #     pass
+    
+    # ============================================================================
+    # === FIN MÉTODOS LEGACY DE REAGENDAMIENTO ===
+    # ============================================================================
+    
+    def handle_reagendar_confirmar(self, telefono: str, mensaje: str) -> str:
         """Muestra servicios para reagendar"""
         categorias = self.get_servicios_por_categoria()
         
@@ -1027,36 +1426,30 @@ NUEVA CITA:
 ¿Confirmas el cambio? Responde SÍ o NO."""
     
     def handle_reagendar_confirmar(self, telefono: str, mensaje: str) -> str:
-        """Maneja la confirmación en el flujo de reagendar"""
+        """Maneja la confirmación en el flujo de reagendar - USA GOOGLE SHEETS"""
         if "si" in mensaje or "sí" in mensaje or "confirmar" in mensaje:
             conv = self.get_or_create_conversation(telefono)
             contexto = conv.contexto
             
-            nueva_fecha_hora = parser.parse(contexto["nueva_fecha_hora"])
-            duracion = contexto.get("duracion_minutos", 30)
+            # Actualizar en Google Sheets
+            sheets_client = get_sheets_client()
+            success = sheets_client.update_appointment(
+                contexto["cita_id"],
+                {
+                    'fecha': contexto["nueva_fecha"],
+                    'hora': contexto["nueva_hora"]
+                }
+            )
             
-            disponible, doctor_id = self.is_slot_available(nueva_fecha_hora, duracion)
-            if not disponible:
+            if not success:
                 self.update_conversation(telefono, self.ESTADO_MENU, {})
-                return "😔 Ese horario acaba de ser ocupado.\n\n" + self.show_menu(telefono)
-            
-            cita = self.db.query(Cita).filter(Cita.id == contexto["cita_id"]).first()
-            cita.fecha_hora = nueva_fecha_hora
-            cita.doctor_id = doctor_id
-            cita.servicio_id = contexto["servicio_id"]
-            cita.estado = "agendada"
-            self.db.commit()
+                return "😔 Hubo un error al reagendar. Por favor, intenta nuevamente.\n\n" + self.show_menu(telefono)
             
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             
-            servicio = self.get_servicio_by_id(contexto["servicio_id"])
-            doctor = self.db.query(Doctor).filter(Doctor.id == doctor_id).first()
-            
             return f"""✅ ¡Cita reagendada exitosamente!
 
-📅 {nueva_fecha_hora.strftime('%d/%m/%Y')} a las {nueva_fecha_hora.strftime('%H:%M')}
-💼 {servicio.nombre} ({servicio.duracion_minutos} min)
-👨‍⚕️ {doctor.nombre}
+📅 {contexto["nueva_fecha"]} a las {contexto["nueva_hora"]}
 
 Te esperamos! 😊"""
         
@@ -1064,15 +1457,30 @@ Te esperamos! 😊"""
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             return "Reagendamiento cancelado."
     
-    # === FLUJO CANCELAR ===
+    
+    # === FLUJO CANCELAR (MIGRADO A GOOGLE SHEETS) ===
     def handle_cancelar_seleccionar(self, telefono: str, mensaje: str) -> str:
-        """Maneja la selección de cita para cancelar"""
+        """Maneja la selección de cita para cancelar - USA GOOGLE SHEETS"""
         try:
             indice = int(mensaje) - 1
-            citas = self.get_patient_appointments(telefono)
+            sheets_client = get_sheets_client()
+            citas = sheets_client.get_appointments_by_phone(telefono)
             
             if indice < 0 or indice >= len(citas):
                 return "Número inválido. Por favor, elige un número de la lista."
+            
+            cita = citas[indice]
+            contexto = {"cita_id": cita['id']}
+            self.update_conversation(telefono, self.ESTADO_CANCELAR_CONFIRMAR, contexto)
+            
+            return f"""Vas a cancelar esta cita:
+
+{sheets_client.format_appointment(cita)}
+
+¿Estás seguro? Responde SÍ para confirmar o NO para volver al menú."""
+        
+        except ValueError:
+            return "Por favor, responde con el número de la cita."
             
             cita = citas[indice]
             contexto = {"cita_id": cita.id}
@@ -1084,14 +1492,18 @@ Te esperamos! 😊"""
             return "Por favor, responde con el número de la cita."
     
     def handle_cancelar_confirmar(self, telefono: str, mensaje: str) -> str:
-        """Maneja la confirmación en el flujo de cancelar"""
+        """Maneja la confirmación en el flujo de cancelar - USA GOOGLE SHEETS"""
         if "si" in mensaje or "sí" in mensaje or "confirmar" in mensaje:
             conv = self.get_or_create_conversation(telefono)
             contexto = conv.contexto
             
-            cita = self.db.query(Cita).filter(Cita.id == contexto["cita_id"]).first()
-            cita.estado = "cancelada"
-            self.db.commit()
+            # Cancelar en Google Sheets (marca como cancelada, NO elimina)
+            sheets_client = get_sheets_client()
+            success = sheets_client.cancel_appointment(contexto["cita_id"])
+            
+            if not success:
+                self.update_conversation(telefono, self.ESTADO_MENU, {})
+                return "😔 Hubo un error al cancelar. Por favor, intenta nuevamente.\n\n" + self.show_menu(telefono)
             
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             
@@ -1103,16 +1515,20 @@ Si deseas agendar nuevamente, estoy aquí para ayudarte. 😊"""
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             return "Cancelación abortada. Tu cita sigue activa."
     
-    # === FLUJO CONSULTAR ===
+    
+    # === FLUJO CONSULTAR (MIGRADO A GOOGLE SHEETS) ===
     def handle_consultar(self, telefono: str, mensaje: str) -> str:
-        """Maneja la consulta de citas"""
-        citas = self.get_patient_appointments(telefono)
+        """Maneja la consulta de citas - USA GOOGLE SHEETS"""
+        sheets_client = get_sheets_client()
+        citas = sheets_client.get_appointments_by_phone(telefono)
         
         if not citas:
             return "No tienes citas agendadas. 📅"
         
         respuesta = "📋 Tus citas agendadas:\n\n"
         for i, cita in enumerate(citas, 1):
-            respuesta += f"{i}. {self.format_appointment(cita)}\n\n"
+            respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
+        
+        return respuesta.strip()
         
         return respuesta.strip()

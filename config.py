@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     clinic_name: str = "Clínica Dental"
     clinic_phone: str = ""
     
+    # Google Sheets (nueva fuente de datos)
+    spreadsheet_id: str
+    sheet_name: str = "Citas"
+    calendar_id: str = "primary"
+    google_credentials: str
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
