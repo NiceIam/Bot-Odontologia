@@ -27,6 +27,7 @@ class ChatbotLogic:
     ESTADO_AGENDAR_CONFIRMAR = "agendar_confirmar"
     
     # Reagendar
+    ESTADO_REAGENDAR_CEDULA = "reagendar_cedula"
     ESTADO_REAGENDAR_SELECCIONAR = "reagendar_seleccionar"
     ESTADO_REAGENDAR_SERVICIO = "reagendar_servicio"
     ESTADO_REAGENDAR_FECHA = "reagendar_fecha"
@@ -34,10 +35,12 @@ class ChatbotLogic:
     ESTADO_REAGENDAR_CONFIRMAR = "reagendar_confirmar"
     
     # Cancelar
+    ESTADO_CANCELAR_CEDULA = "cancelar_cedula"
     ESTADO_CANCELAR_SELECCIONAR = "cancelar_seleccionar"
     ESTADO_CANCELAR_CONFIRMAR = "cancelar_confirmar"
     
     # Consultar
+    ESTADO_CONSULTAR_CEDULA = "consultar_cedula"
     ESTADO_CONSULTAR = "consultar"
     
     # Horarios
@@ -436,6 +439,8 @@ class ChatbotLogic:
             return self.handle_agendar_confirmar(telefono, mensaje)
         
         # Flujo de reagendar
+        elif conv['estado'] == self.ESTADO_REAGENDAR_CEDULA:
+            return self.handle_reagendar_cedula(telefono, mensaje)
         elif conv['estado'] == self.ESTADO_REAGENDAR_SELECCIONAR:
             return self.handle_reagendar_seleccionar(telefono, mensaje)
         elif conv['estado'] == self.ESTADO_REAGENDAR_SERVICIO:
@@ -448,12 +453,16 @@ class ChatbotLogic:
             return self.handle_reagendar_confirmar(telefono, mensaje)
         
         # Flujo de cancelar
+        elif conv['estado'] == self.ESTADO_CANCELAR_CEDULA:
+            return self.handle_cancelar_cedula(telefono, mensaje)
         elif conv['estado'] == self.ESTADO_CANCELAR_SELECCIONAR:
             return self.handle_cancelar_seleccionar(telefono, mensaje)
         elif conv['estado'] == self.ESTADO_CANCELAR_CONFIRMAR:
             return self.handle_cancelar_confirmar(telefono, mensaje)
         
         # Flujo de consultar
+        elif conv['estado'] == self.ESTADO_CONSULTAR_CEDULA:
+            return self.handle_consultar_cedula(telefono, mensaje)
         elif conv['estado'] == self.ESTADO_CONSULTAR:
             return self.handle_consultar(telefono, mensaje)
         
@@ -493,37 +502,19 @@ Por favor, responde con el número de la opción que deseas."""
 Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 😊"""
         
         elif "2" in mensaje or "reagendar" in mensaje:
-            # Usar Google Sheets en lugar de PostgreSQL
-            sheets_client = get_sheets_client()
-            citas = sheets_client.get_appointments_by_phone(telefono)
-            
-            if not citas:
-                return "No tienes citas agendadas para reagendar. 😔\n\n" + self.show_menu(telefono)
-            
-            self.update_conversation(telefono, self.ESTADO_REAGENDAR_SELECCIONAR, {})
-            respuesta = "Estas son tus citas agendadas:\n\n"
-            for i, cita in enumerate(citas, 1):
-                respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
-            respuesta += "¿Cuál cita deseas reagendar? Responde con el número."
-            return respuesta
+            # Pedir cédula antes de mostrar citas
+            self.update_conversation(telefono, self.ESTADO_REAGENDAR_CEDULA, {})
+            return "Por favor, ingresa tu número de cédula para buscar tus citas:"
         
         elif "3" in mensaje or "cancelar" in mensaje:
-            # Usar Google Sheets en lugar de PostgreSQL
-            sheets_client = get_sheets_client()
-            citas = sheets_client.get_appointments_by_phone(telefono)
-            
-            if not citas:
-                return "No tienes citas agendadas para cancelar. 😔\n\n" + self.show_menu(telefono)
-            
-            self.update_conversation(telefono, self.ESTADO_CANCELAR_SELECCIONAR, {})
-            respuesta = "Estas son tus citas agendadas:\n\n"
-            for i, cita in enumerate(citas, 1):
-                respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
-            respuesta += "¿Cuál cita deseas cancelar? Responde con el número."
-            return respuesta
+            # Pedir cédula antes de mostrar citas
+            self.update_conversation(telefono, self.ESTADO_CANCELAR_CEDULA, {})
+            return "Por favor, ingresa tu número de cédula para buscar tus citas:"
         
         elif "4" in mensaje or "consultar" in mensaje:
-            return self.handle_consultar(telefono, mensaje)
+            # Pedir cédula antes de consultar
+            self.update_conversation(telefono, self.ESTADO_CONSULTAR_CEDULA, {})
+            return "Por favor, ingresa tu número de cédula para consultar tus citas:"
         
         elif "5" in mensaje or "profesional" in mensaje or "hablar" in mensaje:
             # Opción 5: Hablar con un profesional
@@ -1058,18 +1049,55 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             return "Cita cancelada. No hay problema! 😊"
     
     # === FLUJO REAGENDAR (MIGRADO A GOOGLE SHEETS) ===
+    def handle_reagendar_cedula(self, telefono: str, mensaje: str) -> str:
+        """Solicita y valida la cédula para reagendar - USA GOOGLE SHEETS"""
+        cedula = mensaje.strip()
+        
+        # Validar que sea un número
+        if not cedula.isdigit():
+            return "❌ Por favor, ingresa solo números. Ejemplo: 1234567890"
+        
+        # Validar longitud mínima
+        if len(cedula) < 6:
+            return "❌ La cédula debe tener al menos 6 dígitos. Por favor, intenta nuevamente."
+        
+        # Buscar citas por cédula en Google Sheets
+        sheets_client = get_sheets_client()
+        citas = sheets_client.get_appointments_by_id(cedula)
+        
+        if not citas:
+            return f"No encontré citas agendadas con la cédula {cedula}. 😔\n\nVerifica el número e intenta nuevamente, o escribe 'menu' para volver al inicio."
+        
+        # Guardar cédula en contexto y mostrar citas
+        contexto = {"cedula": cedula}
+        self.update_conversation(telefono, self.ESTADO_REAGENDAR_SELECCIONAR, contexto)
+        
+        respuesta = f"Encontré {len(citas)} cita(s) con la cédula {cedula}:\n\n"
+        for i, cita in enumerate(citas, 1):
+            respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
+        respuesta += "¿Cuál cita deseas reagendar? Responde con el número."
+        return respuesta
+    
     def handle_reagendar_seleccionar(self, telefono: str, mensaje: str) -> str:
         """Maneja la selección de cita para reagendar - USA GOOGLE SHEETS"""
         try:
             indice = int(mensaje) - 1
+            conv = self.get_or_create_conversation(telefono)
+            contexto = conv['contexto'] or {}
+            cedula = contexto.get("cedula")
+            
+            if not cedula:
+                self.update_conversation(telefono, self.ESTADO_MENU, {})
+                return "❌ Hubo un error. Por favor, comienza de nuevo.\n\nEscribe 'menu' para ver las opciones."
+            
             sheets_client = get_sheets_client()
-            citas = sheets_client.get_appointments_by_phone(telefono)
+            citas = sheets_client.get_appointments_by_id(cedula)
             
             if indice < 0 or indice >= len(citas):
                 return "Número inválido. Por favor, elige un número de la lista."
             
             cita = citas[indice]
-            contexto = {"cita_id": cita['id'], "citas_list": citas}
+            contexto["cita_id"] = cita['id']
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_SERVICIO, contexto)
             
             return f"""Vas a reagendar esta cita:
@@ -1411,18 +1439,55 @@ Te esperamos! 😊"""
     
     
     # === FLUJO CANCELAR (MIGRADO A GOOGLE SHEETS) ===
+    def handle_cancelar_cedula(self, telefono: str, mensaje: str) -> str:
+        """Solicita y valida la cédula para cancelar - USA GOOGLE SHEETS"""
+        cedula = mensaje.strip()
+        
+        # Validar que sea un número
+        if not cedula.isdigit():
+            return "❌ Por favor, ingresa solo números. Ejemplo: 1234567890"
+        
+        # Validar longitud mínima
+        if len(cedula) < 6:
+            return "❌ La cédula debe tener al menos 6 dígitos. Por favor, intenta nuevamente."
+        
+        # Buscar citas por cédula en Google Sheets
+        sheets_client = get_sheets_client()
+        citas = sheets_client.get_appointments_by_id(cedula)
+        
+        if not citas:
+            return f"No encontré citas agendadas con la cédula {cedula}. 😔\n\nVerifica el número e intenta nuevamente, o escribe 'menu' para volver al inicio."
+        
+        # Guardar cédula en contexto y mostrar citas
+        contexto = {"cedula": cedula}
+        self.update_conversation(telefono, self.ESTADO_CANCELAR_SELECCIONAR, contexto)
+        
+        respuesta = f"Encontré {len(citas)} cita(s) con la cédula {cedula}:\n\n"
+        for i, cita in enumerate(citas, 1):
+            respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
+        respuesta += "¿Cuál cita deseas cancelar? Responde con el número."
+        return respuesta
+    
     def handle_cancelar_seleccionar(self, telefono: str, mensaje: str) -> str:
         """Maneja la selección de cita para cancelar - USA GOOGLE SHEETS"""
         try:
             indice = int(mensaje) - 1
+            conv = self.get_or_create_conversation(telefono)
+            contexto = conv['contexto'] or {}
+            cedula = contexto.get("cedula")
+            
+            if not cedula:
+                self.update_conversation(telefono, self.ESTADO_MENU, {})
+                return "❌ Hubo un error. Por favor, comienza de nuevo.\n\nEscribe 'menu' para ver las opciones."
+            
             sheets_client = get_sheets_client()
-            citas = sheets_client.get_appointments_by_phone(telefono)
+            citas = sheets_client.get_appointments_by_id(cedula)
             
             if indice < 0 or indice >= len(citas):
                 return "Número inválido. Por favor, elige un número de la lista."
             
             cita = citas[indice]
-            contexto = {"cita_id": cita['id']}
+            contexto["cita_id"] = cita['id']
             self.update_conversation(telefono, self.ESTADO_CANCELAR_CONFIRMAR, contexto)
             
             return f"""Vas a cancelar esta cita:
@@ -1433,12 +1498,6 @@ Te esperamos! 😊"""
         
         except ValueError:
             return "Por favor, responde con el número de la cita."
-            
-            cita = citas[indice]
-            contexto = {"cita_id": cita.id}
-            self.update_conversation(telefono, self.ESTADO_CANCELAR_CONFIRMAR, contexto)
-            
-            return f"Vas a cancelar esta cita:\n\n{self.format_appointment(cita)}\n\n¿Estás seguro? Responde SÍ para confirmar o NO para volver al menú."
         
         except ValueError:
             return "Por favor, responde con el número de la cita."
@@ -1469,8 +1528,38 @@ Si deseas agendar nuevamente, estoy aquí para ayudarte. 😊"""
     
     
     # === FLUJO CONSULTAR (MIGRADO A GOOGLE SHEETS) ===
+    def handle_consultar_cedula(self, telefono: str, mensaje: str) -> str:
+        """Solicita y valida la cédula para consultar - USA GOOGLE SHEETS"""
+        cedula = mensaje.strip()
+        
+        # Validar que sea un número
+        if not cedula.isdigit():
+            return "❌ Por favor, ingresa solo números. Ejemplo: 1234567890"
+        
+        # Validar longitud mínima
+        if len(cedula) < 6:
+            return "❌ La cédula debe tener al menos 6 dígitos. Por favor, intenta nuevamente."
+        
+        # Buscar citas por cédula en Google Sheets
+        sheets_client = get_sheets_client()
+        citas = sheets_client.get_appointments_by_id(cedula)
+        
+        if not citas:
+            self.update_conversation(telefono, self.ESTADO_MENU, {})
+            return f"No encontré citas agendadas con la cédula {cedula}. 😔\n\nEscribe 'menu' para volver al inicio."
+        
+        # Mostrar citas y volver al menú
+        self.update_conversation(telefono, self.ESTADO_MENU, {})
+        
+        respuesta = f"📋 Encontré {len(citas)} cita(s) con la cédula {cedula}:\n\n"
+        for i, cita in enumerate(citas, 1):
+            respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
+        
+        respuesta += "¿Necesitas algo más? Escribe 'menu' para ver las opciones."
+        return respuesta.strip()
+    
     def handle_consultar(self, telefono: str, mensaje: str) -> str:
-        """Maneja la consulta de citas - USA GOOGLE SHEETS"""
+        """Maneja la consulta de citas - USA GOOGLE SHEETS (LEGACY - Ya no se usa)"""
         sheets_client = get_sheets_client()
         citas = sheets_client.get_appointments_by_phone(telefono)
         
@@ -1480,7 +1569,5 @@ Si deseas agendar nuevamente, estoy aquí para ayudarte. 😊"""
         respuesta = "📋 Tus citas agendadas:\n\n"
         for i, cita in enumerate(citas, 1):
             respuesta += f"{i}. {sheets_client.format_appointment(cita)}\n\n"
-        
-        return respuesta.strip()
         
         return respuesta.strip()

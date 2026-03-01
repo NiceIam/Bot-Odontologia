@@ -111,6 +111,17 @@ class GoogleSheetsClient:
         
         return patient_appointments
     
+    def get_appointments_by_id(self, cedula: str) -> List[Dict]:
+        """Obtiene las citas de un paciente específico por cédula (ID)"""
+        all_appointments = self.get_all_appointments()
+        
+        patient_appointments = [
+            apt for apt in all_appointments 
+            if apt['id'] == cedula and apt['estado'].lower() not in ['cancelada', 'atendida']
+        ]
+        
+        return patient_appointments
+    
     def get_appointment_by_id(self, appointment_id: str) -> Optional[Dict]:
         """Obtiene una cita específica por ID"""
         all_appointments = self.get_all_appointments()
