@@ -414,8 +414,8 @@ class ChatbotLogic:
         conv = self.get_or_create_conversation(telefono)
         print(f"DEBUG: estado actual = {conv['estado']}")
         
-        # Si el usuario saluda, siempre mostrar el menú
-        saludos = ["hola", "hi", "hello", "buenos dias", "buenas tardes", "buenas noches", "hey", "ola"]
+        # Si el usuario saluda o pide el menú, siempre mostrar el menú
+        saludos = ["hola", "hi", "hello", "buenos dias", "buenas tardes", "buenas noches", "hey", "ola", "menu", "menú", "opciones"]
         if any(saludo in mensaje for saludo in saludos):
             return self.show_menu(telefono)
         
@@ -457,7 +457,8 @@ class ChatbotLogic:
         elif conv['estado'] == self.ESTADO_CONSULTAR:
             return self.handle_consultar(telefono, mensaje)
         
-        return self.show_menu(telefono)
+        # Si no se reconoce el estado, informar al usuario sin mostrar menú automáticamente
+        return "No entendí tu mensaje. Escribe 'hola' o 'menu' para ver las opciones disponibles."
     
     def show_menu(self, telefono: str) -> str:
         """Muestra el menú principal"""

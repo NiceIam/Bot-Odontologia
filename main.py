@@ -94,9 +94,13 @@ async def webhook(request: Request):
             ""
         )
         
-        if not mensaje:
-            logger.warning("Mensaje sin texto recibido")
-            return {"status": "ignored", "reason": "no text content"}
+        # Ignorar mensajes vacíos o muy cortos (posibles eventos duplicados)
+        if not mensaje or len(mensaje.strip()) == 0:
+            logger.warning("Mensaje vacío recibido, ignorando")
+            return {"status": "ignored", "reason": "empty message"}
+        
+        # Limpiar el mensaje
+        mensaje = mensaje.strip()
         
         logger.info(f"Procesando mensaje de {telefono}: {mensaje}")
         
