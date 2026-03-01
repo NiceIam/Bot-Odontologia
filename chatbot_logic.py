@@ -148,13 +148,19 @@ class ChatbotLogic:
             "tipo_evento": "solicitud_atencion_humana"
         }
         
+        print(f"DEBUG: Enviando webhook a {webhook_url}")
+        print(f"DEBUG: Payload: {payload}")
+        
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(webhook_url, json=payload, timeout=10.0)
-                print(f"Webhook enviado: {response.status_code}")
+                print(f"✅ Webhook enviado exitosamente: {response.status_code}")
+                print(f"DEBUG: Respuesta del webhook: {response.text}")
                 return True
         except Exception as e:
-            print(f"Error enviando webhook: {str(e)}")
+            print(f"❌ Error enviando webhook: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def activate_human_mode(self, telefono: str):

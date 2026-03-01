@@ -124,7 +124,7 @@ async def webhook(request: Request):
             await chatbot.send_human_handoff_webhook(
                 telefono,
                 mensaje,
-                paciente.nombre if paciente else None
+                paciente['nombre'] if paciente else None
             )
             
             logger.info(f"Handoff a humano activado para {telefono}")
