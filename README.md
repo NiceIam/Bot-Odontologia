@@ -288,7 +288,7 @@ curl -X POST "http://localhost:8000/webhook" \
 
 ### Google Sheets (Citas - NUEVA FUENTE DE DATOS)
 
-**Spreadsheet ID:** `1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw`  
+**Spreadsheet ID:** `1FAAA-UU0af0aZZ87TcUpPmP4kcpx-GNddKOSJd5pIKw`  
 **Sheet Name:** `Citas`
 
 #### Estructura de columnas:
