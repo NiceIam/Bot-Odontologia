@@ -38,7 +38,7 @@ El sistema detecta automáticamente cuando el usuario quiere hablar con una pers
    ```
 
 2. **Webhook enviado a n8n:**
-   - URL: `https://n8n-n8n.dtbfmw.easypanel.host/webhook-test/bfaba3be-b713-49ff-812e-5a9cb27cf128`
+   - URL: `[TU_WEBHOOK_URL]`
    - Payload:
      ```json
      {

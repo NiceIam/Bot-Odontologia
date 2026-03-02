@@ -10,7 +10,7 @@
 - ✅ Lógica completamente comentada
 - ✅ Marcadores claros de fecha y motivo
 - ✅ Preparado para reactivación futura
-- ✅ Ahora redirige a: https://n8n-orthodontofront.dtbfmw.easypanel.host/
+- ✅ Ahora redirige a: [URL_SISTEMA_EXTERNO]
 
 ### 2. Nuevo Flujo de Agendamiento ✓
 - ✅ Envía enlace externo al usuario
@@ -108,10 +108,10 @@ GOOGLE_CREDENTIALS={"type":"service_account",...}
 ### Variables de Entorno (.env)
 
 ```bash
-SPREADSHEET_ID=1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw
+SPREADSHEET_ID=[TU_SPREADSHEET_ID]
 SHEET_NAME=Citas
 CALENDAR_ID=primary
-GOOGLE_CREDENTIALS={"type":"service_account","project_id":"odontologica-n8n",...}
+GOOGLE_CREDENTIALS={"type":"service_account","project_id":"[TU_PROJECT_ID]",...}
 ```
 
 ### Estructura Google Sheet

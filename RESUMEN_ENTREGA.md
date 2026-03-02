@@ -18,7 +18,7 @@
 ### ✅ Objetivo 2: Nuevo Flujo de Agendamiento
 - **Estado:** Completado
 - **Acción:** Opción 1 del menú ahora envía enlace externo
-- **URL:** https://n8n-orthodontofront.dtbfmw.easypanel.host/
+- **URL:** [URL_SISTEMA_EXTERNO]
 - **Mensaje:** Claro, amable, mantiene tono del chatbot
 - **Ubicación:** `chatbot_logic.py` método `handle_menu()`
 
@@ -139,10 +139,10 @@
 ### Variables de Entorno
 
 ```bash
-SPREADSHEET_ID=1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw
+SPREADSHEET_ID=[TU_SPREADSHEET_ID]
 SHEET_NAME=Citas
 CALENDAR_ID=primary
-GOOGLE_CREDENTIALS={"type":"service_account","project_id":"odontologica-n8n",...}
+GOOGLE_CREDENTIALS={"type":"service_account","project_id":"[TU_PROJECT_ID]",...}
 ```
 
 ### Estructura Google Sheet

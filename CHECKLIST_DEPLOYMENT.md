@@ -51,7 +51,7 @@ python -c "from google_sheets_client import get_sheets_client; client = get_shee
 - [ ] **Agendamiento (Opción 1)**
   - [ ] Enviar "hola" al chatbot
   - [ ] Seleccionar opción 1
-  - [ ] Verificar que envía el enlace: https://n8n-orthodontofront.dtbfmw.easypanel.host/
+  - [ ] Verificar que envía el enlace: [URL_SISTEMA_EXTERNO]
   - [ ] Confirmar que NO ejecuta lógica interna
 
 - [ ] **Reagendamiento (Opción 2)**

@@ -9,7 +9,7 @@
 
 El sistema ha sido migrado completamente a Google Sheets, pero faltan 2 hojas en el spreadsheet:
 
-**Spreadsheet ID:** `1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw`
+**Spreadsheet ID:** `[TU_SPREADSHEET_ID]`
 
 ---
 
@@ -21,7 +21,7 @@ Esta hoja almacena el estado de las conversaciones de cada usuario.
 
 **Pasos:**
 
-1. Abre el spreadsheet: https://docs.google.com/spreadsheets/d/1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw
+1. Abre el spreadsheet: https://docs.google.com/spreadsheets/d/[TU_SPREADSHEET_ID]
 2. Haz clic en el botón "+" en la parte inferior para crear una nueva hoja
 3. Nómbrala exactamente: `Conversaciones` (con mayúscula inicial)
 4. En la fila 1 (headers), escribe exactamente estas columnas:
@@ -107,7 +107,7 @@ El chatbot:
 ### Error: "Permission denied"
 
 - Verifica que la service account tenga permisos de Editor
-- Email: `orthodonto-server@odontologica-n8n.iam.gserviceaccount.com`
+- Email: `[TU_SERVICE_ACCOUNT_EMAIL]`
 
 ### Los datos no se guardan
 

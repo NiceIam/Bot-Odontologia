@@ -19,7 +19,7 @@ Este documento describe la migración del sistema de agendamiento de citas desde
 
 #### Después
 - El chatbot redirige al usuario a un sistema externo de agendamiento
-- URL del sistema: https://n8n-orthodontofront.dtbfmw.easypanel.host/
+- URL del sistema: [URL_SISTEMA_EXTERNO]
 - No se ejecuta ninguna lógica interna de agendamiento
 
 #### Código Afectado
@@ -122,10 +122,10 @@ Agregar al archivo `.env`:
 
 ```bash
 # Google Sheets Configuration
-SPREADSHEET_ID=1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw
+SPREADSHEET_ID=[TU_SPREADSHEET_ID]
 SHEET_NAME=Citas
 CALENDAR_ID=primary
-GOOGLE_CREDENTIALS={"type":"service_account","project_id":"odontologica-n8n",...}
+GOOGLE_CREDENTIALS={"type":"service_account","project_id":"[TU_PROJECT_ID]",...}
 ```
 
 ### Estructura del Google Sheet

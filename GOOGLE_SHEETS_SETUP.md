@@ -5,7 +5,7 @@
 
 ## Spreadsheet Requerido
 
-**Spreadsheet ID:** `1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw`
+**Spreadsheet ID:** `[TU_SPREADSHEET_ID]`
 
 Este spreadsheet debe contener 3 hojas (sheets) con las siguientes estructuras:
 
@@ -130,7 +130,7 @@ Este spreadsheet debe contener 3 hojas (sheets) con las siguientes estructuras:
 
 ### 1. Crear las Hojas
 
-En el spreadsheet `1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw`:
+En el spreadsheet `[TU_SPREADSHEET_ID]`:
 
 1. ✅ Hoja "Citas" - YA EXISTE (no modificar estructura)
 2. Crear hoja llamada exactamente "Conversaciones"
@@ -147,7 +147,7 @@ Solo necesitas agregar headers en:
 ### 3. Permisos
 
 Asegurarse de que la service account tenga permisos de edición:
-- Email: `orthodonto-server@odontologica-n8n.iam.gserviceaccount.com`
+- Email: `[TU_SERVICE_ACCOUNT_EMAIL]`
 - Permisos: Editor
 
 ### 4. Verificar Configuración
@@ -208,7 +208,7 @@ Copia los resultados y pégalos en las hojas correspondientes.
 ### Error: "Permission denied"
 
 - Verifica que la service account tenga permisos de Editor
-- Comparte el spreadsheet con: `orthodonto-server@odontologica-n8n.iam.gserviceaccount.com`
+- Comparte el spreadsheet con: `[TU_SERVICE_ACCOUNT_EMAIL]`
 
 ### Error: "Invalid JSON in contexto"
 

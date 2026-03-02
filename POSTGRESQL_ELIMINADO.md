@@ -211,7 +211,7 @@ Al iniciar, deberías ver:
 
 ```
 ✅ Google Sheets Client inicializado correctamente
-   Spreadsheet ID: 1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw
+   Spreadsheet ID: [TU_SPREADSHEET_ID]
    Sheets: Citas, Conversaciones, Pacientes
 ✅ Sistema configurado para usar Google Sheets (sin PostgreSQL)
 🚀 Aplicación iniciada correctamente

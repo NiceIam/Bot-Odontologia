@@ -78,10 +78,10 @@ CLINIC_NAME=Clínica Dental Sonrisa
 CLINIC_PHONE=+1234567890
 
 # Google Sheets (NUEVO - Requerido)
-SPREADSHEET_ID=1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw
+SPREADSHEET_ID=[TU_SPREADSHEET_ID]
 SHEET_NAME=Citas
 CALENDAR_ID=primary
-GOOGLE_CREDENTIALS={"type":"service_account","project_id":"odontologica-n8n",...}
+GOOGLE_CREDENTIALS={"type":"service_account","project_id":"[TU_PROJECT_ID]",...}
 ```
 
 **Nota:** Las credenciales de Google deben ser un JSON completo de service account.
@@ -153,7 +153,7 @@ Asegúrate de que tu instancia de Evolution API esté conectada a WhatsApp y fun
 **Flujo actual:**
 1. Usuario: Selecciona opción 1 (Agendar)
 2. Bot: Envía enlace al sistema externo de agendamiento
-3. Usuario: Accede a https://n8n-orthodontofront.dtbfmw.easypanel.host/
+3. Usuario: Accede a https://XXXXXXXXXXXXront.dtbfmw.XXXXXXXX.host/
 4. Usuario: Completa agendamiento en sistema externo
 
 **Nota:** El flujo interno de agendamiento fue desactivado pero preservado en el código (comentado) para posible reactivación futura.
@@ -288,7 +288,7 @@ curl -X POST "http://localhost:8000/webhook" \
 
 ### Google Sheets (Citas - NUEVA FUENTE DE DATOS)
 
-**Spreadsheet ID:** `1F8MG-UU0af0aEj87TcUpPmP4kcp3-GTddKOSJd2pIKw`  
+**Spreadsheet ID:** `[TU_SPREADSHEET_ID]`  
 **Sheet Name:** `Citas`
 
 #### Estructura de columnas:
@@ -351,7 +351,7 @@ logging.basicConfig(level=logging.DEBUG)  # Para más detalle
 - Las conversaciones se reinician automáticamente después de cada flujo
 - **Horarios de atención:** Lunes a Viernes, 8:00 - 17:00
 - **Hora de almuerzo:** 12:00 - 13:00 (bloqueada para citas)
-- **Agendamiento:** Redirige a sistema externo (https://n8n-orthodontofront.dtbfmw.easypanel.host/)
+- **Agendamiento:** Redirige a sistema externo ([URL_SISTEMA_EXTERNO])
 - **Citas:** Almacenadas en Google Sheets (NO en PostgreSQL)
 - **Conversaciones y Pacientes:** Siguen en PostgreSQL
 - **Código legacy:** Preservado y comentado para posible rollback
