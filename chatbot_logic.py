@@ -479,7 +479,7 @@ class ChatbotLogic:
         
         self.update_conversation(telefono, self.ESTADO_MENU, {})
         
-        return f"""¡Hola{nombre}! 👋 Bienvenido a la Clínica Dental Sonrisa.
+        return f"""¡Hola{nombre}! 👋 Bienvenido a Orthodonto.
 
 ¿En qué puedo ayudarte hoy?
 
