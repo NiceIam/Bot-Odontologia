@@ -1134,8 +1134,12 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             sheets_client = get_sheets_client()
             citas = sheets_client.get_appointments_by_id(cedula)
             
+            if not citas:
+                self.update_conversation(telefono, self.ESTADO_MENU, {})
+                return "❌ No se encontraron citas. Por favor, intenta nuevamente.\n\nEscribe 'menu' para ver las opciones."
+            
             if indice < 0 or indice >= len(citas):
-                return "Número inválido. Por favor, elige un número de la lista."
+                return f"Número inválido. Por favor, elige un número del 1 al {len(citas)}."
             
             cita = citas[indice]
             
@@ -1162,6 +1166,8 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             
             contexto["cita_id"] = cita['id']
             contexto["doctora"] = doctora  # Guardar doctora de la cita existente
+            contexto["cita_fecha_original"] = cita['fecha']
+            contexto["cita_hora_original"] = cita['hora']
             contexto["dias_disponibles"] = dias_serializables
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
             
@@ -1459,11 +1465,21 @@ Te esperamos! 😊"""
             sheets_client = get_sheets_client()
             citas = sheets_client.get_appointments_by_id(cedula)
             
+            if not citas:
+                self.update_conversation(telefono, self.ESTADO_MENU, {})
+                return "❌ No se encontraron citas. Por favor, intenta nuevamente.\n\nEscribe 'menu' para ver las opciones."
+            
             if indice < 0 or indice >= len(citas):
-                return "Número inválido. Por favor, elige un número de la lista."
+                return f"Número inválido. Por favor, elige un número del 1 al {len(citas)}."
             
             cita = citas[indice]
+            
+            # Guardar tanto el ID como los detalles de la cita para confirmación
             contexto["cita_id"] = cita['id']
+            contexto["cita_fecha"] = cita['fecha']
+            contexto["cita_hora"] = cita['hora']
+            contexto["cita_servicio"] = cita['servicio']
+            contexto["cita_doctora"] = cita['doctora']
             self.update_conversation(telefono, self.ESTADO_CANCELAR_CONFIRMAR, contexto)
             
             return f"""Vas a cancelar esta cita:
@@ -1471,9 +1487,6 @@ Te esperamos! 😊"""
 {sheets_client.format_appointment(cita)}
 
 ¿Estás seguro? Responde SÍ para confirmar o NO para volver al menú."""
-        
-        except ValueError:
-            return "Por favor, responde con el número de la cita."
         
         except ValueError:
             return "Por favor, responde con el número de la cita."
