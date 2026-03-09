@@ -31,11 +31,15 @@ Bot: Encontré 2 cita(s) con la cédula 1029400483:
 ¿Cuál cita deseas reagendar? Responde con el número.
 ```
 
-### Paso 3: Catálogo de Fechas (NUEVO)
+### Paso 3: Catálogo de Fechas
 ```
 Usuario: 1
 Bot: Vas a reagendar esta cita:
-...
+
+📅 20/02/2026 a las 8:00
+💼 Servicio: Ortodoncia
+👩‍⚕️ Doctora: Sandra
+📝 Estado: Agendada
 
 📅 Selecciona una nueva fecha (próximos días disponibles):
 
@@ -51,29 +55,35 @@ Bot: Vas a reagendar esta cita:
 Responde con el número de la fecha que prefieres.
 ```
 
-### Paso 4: Catálogo de Horas (NUEVO)
+### Paso 4: Catálogo de Horas (según doctora de la cita)
 ```
-Usuario: 5
+Usuario: 3 (Miércoles)
 Bot: Perfecto! Has seleccionado:
-📅 Viernes 07/03/2026
+📅 Miércoles 05/03/2026
 
 🕐 Ahora selecciona la hora:
 
+🌅 MAÑANA:
 1. 08:00   2. 08:30   3. 09:00   4. 09:30
 5. 10:00   6. 10:30   7. 11:00   8. 11:30
-9. 13:00   10. 13:30  11. 14:00  12. 14:30
-13. 15:00  14. 15:30  15. 16:00  16. 16:30
+
+🌆 TARDE:
+9. 14:00   10. 14:30  11. 15:00  12. 15:30
+13. 16:00  14. 16:30
 
 Responde con el número de la hora que prefieres.
+
+Nota: Como la cita es con Doctora Sandra y es Miércoles, 
+la última hora disponible es 16:30
 ```
 
 ### Paso 5: Confirmación
 ```
-Usuario: 9
+Usuario: 14
 Bot: Perfecto! Nueva fecha y hora:
 
-📅 Viernes 07/03/2026
-🕐 13:00
+📅 Miércoles 05/03/2026
+🕐 16:30
 
 ¿Confirmas el cambio? Responde SÍ o NO.
 ```
@@ -103,13 +113,19 @@ El bot consulta el sheet "Calendario" con la siguiente estructura:
 ## Horarios Disponibles por Día
 
 ### Lunes a Viernes
-- **Horario:** 8:00 - 17:00
-- **Excepción:** 12:00 - 13:00 (hora de almuerzo)
+- **Horario Mañana:** 8:00 - 12:00 (última cita 11:30)
+- **Horario Tarde:** 14:00 - 17:00
 - **Intervalos:** Cada 30 minutos
-- **Total:** 16 opciones de hora
+
+#### Doctora Sandra
+- **Lunes, Martes, Miércoles:** última cita 16:30 (sale a las 17:00)
+- **Jueves, Viernes:** última cita 17:00 (sale a las 17:30)
+
+#### Doctora Zaida
+- **Todos los días:** última cita 17:00 (sale a las 17:30)
 
 ### Sábados
-- **Horario:** 8:00 - 12:00
+- **Horario:** 8:00 - 12:00 (última cita 11:30)
 - **Intervalos:** Cada 30 minutos
 - **Total:** 8 opciones de hora
 
@@ -142,33 +158,59 @@ Obtiene los próximos días laborales desde el sheet "Calendario"
 ]
 ```
 
-#### 2. `get_available_hours_for_date(fecha_str)`
-Obtiene las horas disponibles para una fecha específica
+#### 2. `get_available_hours_for_date(fecha_str, doctora=None)`
+Obtiene las horas disponibles para una fecha específica y doctora
 
 **Parámetros:**
 - `fecha_str`: Fecha en formato 'YYYY-MM-DD'
+- `doctora`: Nombre de la doctora (opcional: "Sandra" o "Zaida")
 
 **Retorna:**
 ```python
-['08:00', '08:30', '09:00', ..., '16:30']  # Lunes-Viernes
-['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30']  # Sábados
+# Lunes-Viernes (sin doctora especificada o Zaida)
+['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+ '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00']
+
+# Lunes-Miércoles con Doctora Sandra
+['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+ '14:00', '14:30', '15:00', '15:30', '16:00', '16:30']
+
+# Jueves-Viernes con Doctora Sandra
+['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+ '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00']
+
+# Sábados
+['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30']
 ```
 
 ---
 
 ### En `chatbot_logic.py`:
 
-#### 1. `handle_reagendar_fecha(telefono, mensaje)`
+#### 1. `handle_reagendar_seleccionar(telefono, mensaje)`
+Maneja la selección de cita y extrae la doctora de la cita existente
+
+**Flujo:**
+1. Valida número seleccionado
+2. Obtiene cita del contexto
+3. Extrae doctora de la cita: `doctora = cita.get('doctora', '')`
+4. Guarda doctora en contexto
+5. Obtiene próximos 8 días laborales
+6. Muestra catálogo de fechas
+7. Cambia estado a `ESTADO_REAGENDAR_FECHA`
+
+#### 2. `handle_reagendar_fecha(telefono, mensaje)`
 Maneja la selección de fecha del catálogo
 
 **Flujo:**
 1. Valida número seleccionado
 2. Obtiene fecha del contexto
-3. Consulta horas disponibles para esa fecha
-4. Muestra catálogo de horas
-5. Cambia estado a `ESTADO_REAGENDAR_HORA`
+3. Obtiene doctora del contexto
+4. Consulta horas disponibles para esa fecha y doctora
+5. Muestra catálogo de horas
+6. Cambia estado a `ESTADO_REAGENDAR_HORA`
 
-#### 2. `handle_reagendar_hora(telefono, mensaje)`
+#### 3. `handle_reagendar_hora(telefono, mensaje)`
 Maneja la selección de hora del catálogo
 
 **Flujo:**
@@ -194,11 +236,13 @@ ESTADO_REAGENDAR_CONFIRMAR
 ### Ahora:
 ```
 ESTADO_REAGENDAR_CEDULA
-ESTADO_REAGENDAR_SELECCIONAR
-ESTADO_REAGENDAR_FECHA      ← Modificado (muestra catálogo)
-ESTADO_REAGENDAR_HORA       ← Modificado (muestra catálogo)
+ESTADO_REAGENDAR_SELECCIONAR  ← Modificado (extrae doctora de cita)
+ESTADO_REAGENDAR_FECHA         ← Modificado (usa doctora de cita)
+ESTADO_REAGENDAR_HORA          ← Modificado (muestra catálogo)
 ESTADO_REAGENDAR_CONFIRMAR
 ```
+
+**Nota:** Ya NO hay estado `ESTADO_REAGENDAR_DOCTORA` porque la doctora se obtiene automáticamente de la cita existente.
 
 ---
 
@@ -211,7 +255,8 @@ Durante el flujo, se guarda en el contexto:
     "cedula": "1029400483",
     "cita_id": "1029400483",
     
-    # Después de seleccionar fecha:
+    # Después de seleccionar cita (doctora extraída automáticamente):
+    "doctora": "Sandra",  # ← Extraída de la cita existente
     "dias_disponibles": {
         "1": {"fecha": "2026-03-03", "dia_semana": "Lunes", ...},
         "2": {"fecha": "2026-03-04", "dia_semana": "Martes", ...},
@@ -219,18 +264,19 @@ Durante el flujo, se guarda en el contexto:
     },
     
     # Después de seleccionar fecha específica:
-    "fecha_seleccionada": "2026-03-07",
-    "fecha_formato": "07/03/2026",
-    "dia_semana": "Viernes",
+    "fecha_seleccionada": "2026-03-05",
+    "fecha_formato": "05/03/2026",
+    "dia_semana": "Miércoles",
     "horas_disponibles": {
         "1": "08:00",
         "2": "08:30",
         ...
+        "14": "16:30"  # Última hora para Sandra en Miércoles
     },
     
     # Para confirmación:
-    "nueva_fecha": "07/03/2026",
-    "nueva_hora": "13:00"
+    "nueva_fecha": "05/03/2026",
+    "nueva_hora": "16:30"
 }
 ```
 
@@ -242,6 +288,8 @@ Durante el flujo, se guarda en el contexto:
 ✅ **Menos errores:** Validación automática de días laborables
 ✅ **Respeta festivos:** Consulta el calendario real
 ✅ **Horarios correctos:** Sábados automáticamente muestran 8-12h
+✅ **Horarios por doctora:** Respeta los horarios específicos de cada doctora automáticamente
+✅ **Sin preguntas innecesarias:** La doctora se obtiene de la cita existente
 ✅ **Visual y claro:** Catálogo numerado fácil de leer
 ✅ **Paso a paso:** Primero fecha, luego hora (no todo junto)
 

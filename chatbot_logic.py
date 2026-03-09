@@ -500,7 +500,7 @@ Por favor, responde con el número de la opción que deseas."""
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             return """Para agendar tu cita, por favor usa nuestro sistema de agendamiento en línea 👇
 
-🔗 https://n8n-orthodontofront.dtbfmw.easypanel.host/
+🔗 https://n8n-orthodontofront.dtbfmw.easypanel.host/agendar
 
 Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 😊"""
         
@@ -873,14 +873,48 @@ Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 
             # Mantener servicios_map en el contexto
             contexto["servicio_id"] = servicio_id
             contexto["duracion_minutos"] = servicio.duracion_minutos
+            contexto["servicio_nombre"] = servicio.nombre
             
             print(f"DEBUG: Guardando contexto: {contexto}")
-            self.update_conversation(telefono, self.ESTADO_AGENDAR_FECHA, contexto)
+            self.update_conversation(telefono, self.ESTADO_AGENDAR_DOCTORA, contexto)
             
-            return f"Excelente! Has seleccionado: {servicio.nombre} ({servicio.duracion_minutos} min)\n\n¿Qué día te gustaría venir? Por favor indica la fecha en formato DD/MM/AAAA (ejemplo: 25/02/2026).\n\nRecuerda que atendemos de Lunes a Viernes."
+            return f"""Excelente! Has seleccionado: {servicio.nombre} ({servicio.duracion_minutos} min)
+
+👩‍⚕️ ¿Con qué doctora deseas agendar?
+
+1. Doctora Sandra
+2. Doctora Zaida
+
+Responde con el número de tu preferencia."""
         
         except ValueError:
             return "Por favor, responde con el número del servicio."
+    
+    def handle_agendar_doctora(self, telefono: str, mensaje: str) -> str:
+        """Maneja la selección de doctora en el flujo de agendar"""
+        try:
+            numero = int(mensaje)
+            
+            if numero not in [1, 2]:
+                return "Número inválido. Por favor, elige 1 para Doctora Sandra o 2 para Doctora Zaida."
+            
+            conv = self.get_or_create_conversation(telefono)
+            contexto = conv['contexto'] or {}
+            
+            # Guardar doctora seleccionada
+            doctora = "Sandra" if numero == 1 else "Zaida"
+            contexto["doctora"] = doctora
+            
+            self.update_conversation(telefono, self.ESTADO_AGENDAR_FECHA, contexto)
+            
+            return f"""Perfecto! Has seleccionado a la Doctora {doctora}.
+
+¿Qué día te gustaría venir? Por favor indica la fecha en formato DD/MM/AAAA (ejemplo: 25/02/2026).
+
+Recuerda que atendemos de Lunes a Viernes."""
+            
+        except ValueError:
+            return "Por favor, responde con el número de la doctora (1 o 2)."
     
     def handle_agendar_fecha(self, telefono: str, mensaje: str) -> str:
         """Maneja la fecha en el flujo de agendar"""
@@ -894,24 +928,28 @@ Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 
         
         print(f"DEBUG: Contexto recibido en handle_agendar_fecha: {contexto}")
         
-        # Asegurar que tenemos servicio_id y duracion
-        if "servicio_id" not in contexto:
-            print(f"ERROR: No hay servicio_id en contexto. Contexto completo: {contexto}")
+        # Asegurar que tenemos servicio_id, duracion y doctora
+        if "servicio_id" not in contexto or "doctora" not in contexto:
+            print(f"ERROR: Falta servicio_id o doctora en contexto. Contexto completo: {contexto}")
             self.update_conversation(telefono, self.ESTADO_MENU, {})
             return "❌ Hubo un error. Por favor, comienza de nuevo.\n\n" + self.show_menu(telefono)
         
         duracion = contexto.get("duracion_minutos", 30)
+        doctora = contexto.get("doctora")
         
-        # Verificar horarios disponibles
-        slots = self.get_available_slots(fecha, duracion)
-        if not slots:
+        # Obtener horarios disponibles usando Google Sheets
+        fecha_str = fecha.strftime('%Y-%m-%d')
+        sheets_client = get_sheets_client()
+        horas_disponibles = sheets_client.get_available_hours_for_date(fecha_str, doctora)
+        
+        if not horas_disponibles:
             return f"😔 Lo siento, no hay horarios disponibles para el {fecha.strftime('%d/%m/%Y')}.\n\nPor favor, elige otra fecha."
         
         # Separar horarios en mañana y tarde
         horarios_manana = []
         horarios_tarde = []
         
-        for slot in slots:
+        for slot in horas_disponibles:
             hora = int(slot.split(":")[0])
             if hora < 12:
                 horarios_manana.append(slot)
@@ -921,7 +959,7 @@ Es rápido, fácil y podrás ver todos los horarios disponibles en tiempo real. 
         # Crear mapa de horarios y respuesta
         horarios_map = {}
         contador = 1
-        respuesta = f"Perfecto! Para el {fecha.strftime('%d/%m/%Y')} tenemos disponibles:\n\n"
+        respuesta = f"Perfecto! Para el {fecha.strftime('%d/%m/%Y')} con la Doctora {doctora} tenemos disponibles:\n\n"
         
         if horarios_manana:
             respuesta += "🌅 Mañana:\n"
@@ -1101,6 +1139,9 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             
             cita = citas[indice]
             
+            # Obtener doctora de la cita existente
+            doctora = cita.get('doctora', '')
+            
             # Obtener próximos 8 días laborales del calendario
             dias_laborales = sheets_client.get_next_working_days(8)
             
@@ -1108,7 +1149,7 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
                 self.update_conversation(telefono, self.ESTADO_MENU, {})
                 return "❌ No hay fechas disponibles en este momento. Por favor, intenta más tarde.\n\nEscribe 'menu' para volver al inicio."
             
-            # Guardar cita seleccionada y días disponibles en contexto
+            # Guardar cita seleccionada, doctora y días disponibles en contexto
             # Convertir fecha_obj a string para que sea JSON serializable
             dias_serializables = {}
             for key, dia in enumerate(dias_laborales, 1):
@@ -1120,6 +1161,7 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
                 }
             
             contexto["cita_id"] = cita['id']
+            contexto["doctora"] = doctora  # Guardar doctora de la cita existente
             contexto["dias_disponibles"] = dias_serializables
             self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
             
@@ -1166,9 +1208,12 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
             from datetime import datetime
             fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date()
             
-            # Obtener horas disponibles para esa fecha
+            # Obtener doctora del contexto
+            doctora = contexto.get("doctora", None)
+            
+            # Obtener horas disponibles para esa fecha y doctora
             sheets_client = get_sheets_client()
-            horas_disponibles = sheets_client.get_available_hours_for_date(fecha_str)
+            horas_disponibles = sheets_client.get_available_hours_for_date(fecha_str, doctora)
             
             if not horas_disponibles:
                 return "❌ No hay horarios disponibles para esa fecha. Por favor, elige otra fecha."
@@ -1319,34 +1364,6 @@ Te esperamos! Si necesitas reagendar o cancelar, escríbeme cuando quieras."""
     # ============================================================================
     # === FIN MÉTODOS LEGACY DE REAGENDAMIENTO ===
     # ============================================================================
-    
-    def handle_reagendar_confirmar(self, telefono: str, mensaje: str) -> str:
-        """Muestra servicios para reagendar"""
-        categorias = self.get_servicios_por_categoria()
-        
-        respuesta = "Selecciona el nuevo servicio:\n\n"
-        
-        contador = 1
-        servicios_map = {}
-        
-        for categoria, servicios in categorias.items():
-            respuesta += f"📋 {categoria}:\n"
-            for servicio in servicios:
-                respuesta += f"{contador}. {servicio.nombre} ({servicio.duracion_minutos} min)\n"
-                servicios_map[contador] = servicio.id
-                contador += 1
-            respuesta += "\n"
-        
-        respuesta += "Responde con el número del servicio."
-        
-        conv = self.get_or_create_conversation(telefono)
-        contexto = conv['contexto']
-        contexto["servicios_map"] = servicios_map
-        contexto["cambiar_servicio"] = True
-        # Cambiar el estado a REAGENDAR_FECHA para que el siguiente mensaje lo procese correctamente
-        self.update_conversation(telefono, self.ESTADO_REAGENDAR_FECHA, contexto)
-        
-        return respuesta
     
     # ============================================================================
     # === FUNCIONES LEGACY DE REAGENDAR (DESACTIVADAS) ===

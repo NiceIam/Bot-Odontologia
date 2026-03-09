@@ -458,6 +458,10 @@ class GoogleSheetsClient:
                 if fecha <= today:
                     continue
                 
+                # Excluir sábados (no se puede reagendar los sábados)
+                if fecha.weekday() == 5:  # 5 = Sábado
+                    continue
+                
                 # Solo días laborables (es_laborable = TRUE)
                 if es_laborable.upper() == 'TRUE':
                     working_days.append({
@@ -477,12 +481,13 @@ class GoogleSheetsClient:
             print(f"❌ Error obteniendo días laborales: {str(e)}")
             return []
     
-    def get_available_hours_for_date(self, fecha_str: str) -> List[str]:
+    def get_available_hours_for_date(self, fecha_str: str, doctora: str = None) -> List[str]:
         """
         Obtiene las horas disponibles para una fecha específica
         
         Args:
             fecha_str: Fecha en formato YYYY-MM-DD
+            doctora: Nombre de la doctora (opcional: "Sandra" o "Zaida")
             
         Returns:
             Lista de horas disponibles en formato HH:MM
@@ -491,23 +496,52 @@ class GoogleSheetsClient:
             # Parsear fecha
             fecha = datetime.strptime(fecha_str, '%Y-%m-%d')
             dia_semana = fecha.strftime('%A')  # Monday, Tuesday, etc.
+            dia_numero = fecha.weekday()  # 0=Monday, 1=Tuesday, etc.
             
             # Determinar horarios según día de la semana
             if dia_semana == 'Saturday':
-                # Sábados: 8:00 - 12:00
+                # Sábados: 8:00 - 12:00 (última cita 11:30)
                 horas = []
                 for hora in range(8, 12):
                     horas.append(f"{hora:02d}:00")
                     horas.append(f"{hora:02d}:30")
-            else:
-                # Lunes a Viernes: 8:00 - 17:00 (excepto 12:00-13:00)
-                horas = []
-                for hora in range(8, 17):
-                    # Saltar hora de almuerzo (12:00-13:00)
-                    if hora == 12:
-                        continue
-                    horas.append(f"{hora:02d}:00")
-                    horas.append(f"{hora:02d}:30")
+                return horas
+            
+            # Lunes a Viernes: 8:00 - 12:00 y 14:00 - 17:00
+            horas = []
+            
+            # Mañana: 8:00 - 12:00 (última cita 11:30)
+            for hora in range(8, 12):
+                horas.append(f"{hora:02d}:00")
+                horas.append(f"{hora:02d}:30")
+            
+            # Tarde: 14:00 - 17:00+
+            # Determinar última hora según doctora y día
+            ultima_hora = "17:00"  # Por defecto
+            
+            if doctora:
+                doctora_lower = doctora.lower()
+                if doctora_lower == "sandra":
+                    # Doctora Sandra
+                    if dia_numero in [0, 1, 2]:  # Lunes, Martes, Miércoles
+                        # Sale a las 17:00, última cita 16:30
+                        ultima_hora = "16:30"
+                    else:  # Jueves, Viernes
+                        # Sale a las 17:30, última cita 17:00
+                        ultima_hora = "17:00"
+                elif doctora_lower == "zaida":
+                    # Doctora Zaida: sale a las 17:30, última cita 17:00
+                    ultima_hora = "17:00"
+            
+            # Agregar horarios de tarde hasta la última hora permitida
+            for hora in range(14, 18):
+                hora_str = f"{hora:02d}:00"
+                if hora_str <= ultima_hora:
+                    horas.append(hora_str)
+                
+                hora_media_str = f"{hora:02d}:30"
+                if hora_media_str <= ultima_hora:
+                    horas.append(hora_media_str)
             
             return horas
             
